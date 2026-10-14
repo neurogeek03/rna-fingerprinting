@@ -1,40 +1,44 @@
 #!/bin/bash
 #SBATCH --job-name=brisc_dict
-#SBATCH --account=rrg-shreejoy_cpu       # CPU allocation (also: def-shreejoy_cpu)
-#SBATCH --time=06:00:00                  # estimate; the control-cell PCA + 14-file load dominate
+#SBATCH --account=CHANGE_ME              # <<< EDIT PER CLUSTER (or `sbatch --account=...`)
+#SBATCH --time=03:00:00                  # estimate; 14-file load/normalize dominates
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=249G                       # peak: densifying ~1-2M control cells for the 30-PC PCA
+#SBATCH --cpus-per-task=48
+#SBATCH --mem=750G                        # full-atlas QC counts ~196GB/copy; ~392GB transient peak.
+                                          # Needs a large-memory node (nibi=766GB). Lower for subsets.
 #SBATCH --output=%x_%j.out
 #SBATCH --error=%x_%j.out
 
 # Learn the perturbation dictionary on the full QC-passing whole-brain atlas with BRISC, in one
 # process (load 14 h5ads -> concat -> QC -> normalize -> feature select -> collapse -> fit -> .rds).
 #
-#   cd /scratch/mfafouti/rna-fingerprinting && sbatch python/sbatch/learn_dictionary.sbatch
+#   REPO=/path/to/rna-fingerprinting SIF=/path/to.sif H5AD_DIR=/path/to/h5ads \
+#     sbatch --account=<acct> $REPO/python/sbatch/learn_dictionary.sbatch
 #
-# Tunables below: FEATURE_MODE (expression|de|file), OUT, and the resources above.
+# See brisc_adaptation/AGENT_BRIEFING.md for the per-cluster config checklist.
 
 set -euo pipefail
-module load apptainer/1.3.5
+module load "${APPTAINER_MODULE:-apptainer}"
 
-REPO=/scratch/mfafouti/rna-fingerprinting
-SIF=/scratch/mfafouti/docker/brisc_bioc-v2-mkl-seurat-sklearn.sif
-H5AD_DIR=/scratch/mfafouti/Psych_brain/Perturb-seq/wholebrain_atlas/h5ads
-OUT="$REPO/brisc_adaptation/dictionary_wholebrain.rds"
+# --- cluster-specific: edit here or pass via sbatch --export=ALL,REPO=...,SIF=...,H5AD_DIR=... ---
+REPO=${REPO:-$SLURM_SUBMIT_DIR}          # repo root; defaults to the directory you submit from
+SIF=${SIF:?set SIF (pull docker://marlenfafouti/brisc:bioc-v2-mkl-seurat-sklearn)}
+H5AD_DIR=${H5AD_DIR:?set H5AD_DIR to the Perturb-seq h5ad directory on this cluster}
+OUT=${OUT:-$REPO/brisc_adaptation/dictionary_wholebrain.rds}
 
 # Feature selection: "expression" (fast), "de" (find_markers), or "file" (use FEATURES_FILE).
-FEATURE_MODE=expression
-FEATURES_FILE="$REPO/features.txt"
+FEATURE_MODE=${FEATURE_MODE:-expression}
+FEATURES_FILE=${FEATURES_FILE:-$REPO/features.txt}
+MEAN_EXPRESSION=${MEAN_EXPRESSION:-0.05}
 
 # Balance joblib threads (per-perturbation loop) against BLAS threads (one-time control PCA).
-NJOBS=$(( SLURM_CPUS_PER_TASK / 2 ))
+NJOBS=${NJOBS:-$(( SLURM_CPUS_PER_TASK / 2 ))}
 export OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 MKL_NUM_THREADS=2
 
 case "$FEATURE_MODE" in
   file) FEAT_ARGS=(--features-file "$FEATURES_FILE") ;;
-  *)    FEAT_ARGS=(--choose-features "$FEATURE_MODE") ;;
+  *)    FEAT_ARGS=(--choose-features "$FEATURE_MODE" --mean-expression "$MEAN_EXPRESSION") ;;
 esac
 
 echo "node=$(hostname) cpus=$SLURM_CPUS_PER_TASK njobs=$NJOBS feature_mode=$FEATURE_MODE"

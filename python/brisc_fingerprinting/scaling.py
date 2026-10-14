@@ -18,6 +18,41 @@ from scipy import sparse
 import brisc
 
 
+def load_qc(paths, qc_column: str = "passes_qc", num_threads: int = -1):
+    """Load one or more h5ads, concatenate, and drop QC-failing cells (counts left RAW).
+
+    Returns a SingleCell whose ``X`` is still raw counts -- use this for raw-count feature selection
+    (``choose_features(method='expression')``) before normalizing. We do QC by hand (dropping
+    non-passing cells) rather than via BRISC's ``qc()``, so ``skip_qc()`` marks the dataset QCed to
+    satisfy ``normalize()``'s guard downstream.
+    """
+    import gc
+
+    paths = list(paths)
+    # Load ONLY the counts matrix + obs + var. The atlas h5ads also carry obsm/obsp/varm/varp/uns
+    # (neighbor graphs, embeddings, ...) which are large and irrelevant here -- loading them for all
+    # 14 files OOMs the node. ``False`` skips each. Filter each file to QC-passing cells *before*
+    # concatenating so ~22% less data flows into (and is copied by) concat_obs.
+    parts = []
+    for p in paths:
+        s = brisc.SingleCell(p, obsm=False, obsp=False, varm=False, varp=False, uns=False,
+                             num_threads=num_threads)
+        parts.append(s.filter_obs(pl.col(qc_column)))
+    sc = parts[0] if len(parts) == 1 else brisc.concat_obs(*parts)
+    del parts
+    gc.collect()
+    return sc.skip_qc()
+
+
+def normalize_counts(sc, normalize_method: str = "log1pPF"):
+    """Normalize a QC-filtered SingleCell in place (every cell treated as passing: ``QC_column=None``).
+
+    ``inplace=True`` avoids holding the raw and normalized matrices simultaneously -- at ~196 GB per
+    copy of the full-atlas counts, that saved copy matters.
+    """
+    return sc.normalize(method=normalize_method, QC_column=None, inplace=True)
+
+
 def load_and_normalize(
     paths,
     qc_column: str = "passes_qc",
@@ -26,35 +61,24 @@ def load_and_normalize(
 ):
     """Load one or more h5ad files, concatenate, drop QC-failing cells, and normalize.
 
+    Convenience wrapper over :func:`load_qc` + :func:`normalize_counts`. Returns a normalized
+    SingleCell whose ``X`` is the log-normalized (sparse) matrix, cells x genes.
+
     Parameters
     ----------
     paths : sequence of str
         Paths to the h5ad files making up the atlas.
     qc_column : str
-        Boolean obs column marking cells that pass QC (default ``'passes_qc'``). These are the
-        only cells kept. After filtering, every remaining cell passes, so downstream BRISC calls
-        are given ``QC_column=None``.
+        Boolean obs column marking cells that pass QC (default ``'passes_qc'``).
     normalize_method : {'log1pPF', 'logCP10k', 'PFlog1pPF'}
         BRISC normalization method (default ``'log1pPF'``).
     num_threads : int
         BRISC thread count (``-1`` = all cores).
-
-    Returns
-    -------
-    brisc.SingleCell
-        A normalized SingleCell whose ``X`` is the log-normalized (sparse) matrix, cells x genes.
     """
-    paths = list(paths)
-    parts = [brisc.SingleCell(p, num_threads=num_threads) for p in paths]
-    sc = parts[0] if len(parts) == 1 else brisc.concat_obs(*parts)
-
-    # Physically drop QC-failing cells, then treat all remaining cells as passing. We do QC by hand
-    # (dropping non-passing cells) rather than via BRISC's qc(), so mark the dataset QCed to satisfy
-    # normalize()'s guard, and pass QC_column=None so every remaining cell is used.
-    sc = sc.filter_obs(pl.col(qc_column))
-    sc = sc.skip_qc()
-    sc = sc.normalize(method=normalize_method, QC_column=None)
-    return sc
+    return normalize_counts(
+        load_qc(paths, qc_column=qc_column, num_threads=num_threads),
+        normalize_method=normalize_method,
+    )
 
 
 def build_feature_matrix(sc, features):

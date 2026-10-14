@@ -10,6 +10,17 @@ the full ~7M-cell whole-brain Perturb-seq atlas without downsampling.
 Upstream repo: `satijalab/rna-fingerprinting`
 Fork: `neurogeek03/rna-fingerprinting`
 
+**The Python port is implemented and validated** — see `python/brisc_fingerprinting/` and the
+BRISC-adaptation docs under `brisc_adaptation/` (`AGENT_BRIEFING.md` for onboarding, `decisions_log.md`
+for every design decision, `future_todos.md` for deferred work). If you are a new agent (or on a new
+cluster), **read `brisc_adaptation/AGENT_BRIEFING.md` first.**
+
+### Cluster-portability (paths below are nibi-specific; configure per cluster)
+Hardcoded `/scratch/mfafouti/...` paths, the Slurm account, the apptainer module name, and node memory
+all vary by cluster. The run scripts take these as env vars (`SIF`, `H5AD_DIR`, `REPO`, `APPTAINER_MODULE`,
+account via `sbatch --account`). Per-cluster checklist is in `AGENT_BRIEFING.md`. The container is public:
+`docker://marlenfafouti/brisc:bioc-v2-mkl-seurat-sklearn` (pull it on a compute node, see the briefing).
+
 ## Why BRISC
 
 The R pipeline hits two memory walls on the 7M-cell dataset:
@@ -21,8 +32,10 @@ The R pipeline hits two memory walls on the 7M-cell dataset:
 
 BRISC (`SingleCell`) handles these at scale: efficient sparse matrix ops, built-in `normalize()`, `pca()`,
 `find_markers()`, `pseudobulk()`, `filter_obs()`, `split_by_obs()`, all multi-threaded and memory-efficient.
-The BRISC container for the Python port is at `/scratch/mfafouti/docker/brisc_bioc-v2-mkl-seurat-sklearn.sif`
-(brisc 0.1.5, ryp 0.4.1, numpy/scipy/polars, plus scikit-learn + joblib used by `fit()`).
+The BRISC container for the Python port is the public image
+`docker://marlenfafouti/brisc:bioc-v2-mkl-seurat-sklearn` (brisc 0.1.5, ryp 0.4.1, numpy/scipy/polars,
+plus scikit-learn + joblib used by `fit()`). On nibi it is pulled to
+`/scratch/mfafouti/docker/brisc_bioc-v2-mkl-seurat-sklearn.sif`; set `SIF` to its path on other clusters.
 
 ## Package architecture (upstream R)
 
@@ -147,7 +160,8 @@ dictionary <- structure(
 
 ## Perturb-seq dataset (dictionary source)
 
-- Location: `/scratch/mfafouti/Psych_brain/Perturb-seq/wholebrain_atlas/h5ads/` (14 h5ad files, ~72GB)
+- Location (nibi; stage/transfer to other clusters and set `H5AD_DIR`):
+  `/scratch/mfafouti/Psych_brain/Perturb-seq/wholebrain_atlas/h5ads/` (14 h5ad files, ~72GB)
 - 7.7M cells x 27,658 genes (mouse gene symbols in var index, Ensembl in `gene_ids`)
 - `gene_target`: perturbation column (~2,049 targets). Controls: `Negative`, `Non_target`
 - `passes_qc`: boolean QC filter (~78% pass)
@@ -158,6 +172,9 @@ dictionary <- structure(
 ## Development workflow
 
 - Edit here, rebuild Docker image, push to Docker Hub, re-pull as SIF on cluster
-- Test with BRISC container: `apptainer exec /scratch/mfafouti/docker/brisc_bioc-v2-mkl-seurat-sklearn.sif python ...`
-- Test R functions: `apptainer exec /scratch/mfafouti/docker/rna-fingerprinting_seurat-v1.sif Rscript ...`
-- Heavy compute (PCA on millions of cells) must run on a compute node, not the login node
+- Test with BRISC container: `apptainer exec "$SIF" python ...` where `$SIF` is the pulled image
+  (`docker://marlenfafouti/brisc:bioc-v2-mkl-seurat-sklearn`)
+- Test R functions: an R/Seurat container with the `RNAFingerprinting` package + Seurat/irlba/presto/
+  pbmcapply (on nibi: `/scratch/mfafouti/docker/rna-fingerprinting_seurat-v1.sif`)
+- Heavy compute (full load/normalize + control-cell PCA) must run on a compute node, not the login node;
+  the full atlas needs a large-memory node (~400GB+ RAM). See `brisc_adaptation/AGENT_BRIEFING.md`.

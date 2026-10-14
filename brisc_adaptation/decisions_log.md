@@ -19,6 +19,16 @@ Last updated: 2026-10-13.
   image was built (by user) and pulled.
 - **Ops note:** pull large images on a **compute node** with `APPTAINER_TMPDIR=$SLURM_TMPDIR` (node-local SSD);
   login-node unpack onto networked scratch is pathologically slow (>1h vs ~5min). Keep the blob cache on scratch.
+- **Ops note (OOM):** `load_qc` loads only counts + `obs` + `var` (`obsm=False, obsp=False, varm=False,
+  varp=False, uns=False`) and QC-filters each file before `concat_obs`. The atlas h5ads carry large
+  `obsp` neighbor graphs / `obsm` embeddings; loading all of them across 14 files OOMs a 240G node
+  during load. Skipping them is required for the full-atlas run.
+- **Memory sizing (measured):** full atlas = 6,127,364 QC cells, 32.6e9 nonzeros, float32 data +
+  uint16 indices = 6 bytes/nnz -> **~196 GB per copy** of the QC counts CSR, **~392 GB transient peak**
+  (during `concat_obs`, and during build/normalize). nibi CPU nodes have **766 GB** (6 TB largemem
+  nodes also exist but unnecessary). The OOM was purely `comp`'s `--mem=240G` cap (< one copy).
+  Full-atlas runs request **`--mem=750G`** (sbatch) or an equivalent `salloc`. `normalize_counts` uses
+  `inplace=True` to avoid holding raw + normalized at once.
 
 ## 2. Normalization / scaling (SCTransform replacement)
 

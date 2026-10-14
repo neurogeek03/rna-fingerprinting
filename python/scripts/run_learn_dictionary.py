@@ -4,10 +4,10 @@
 Run inside the BRISC container, on a compute node::
 
     module load apptainer/1.3.5
-    apptainer exec /scratch/mfafouti/docker/brisc_bioc-v3-dreamlet.sif \
+    apptainer exec /scratch/mfafouti/docker/brisc_bioc-v2-mkl-seurat-sklearn.sif \
         python python/scripts/run_learn_dictionary.py \
             --h5ad-dir /scratch/mfafouti/Psych_brain/Perturb-seq/wholebrain_atlas/h5ads \
-            --features-file features.txt \
+            --choose-features expression \
             --out dictionary.rds \
             --n-jobs 16
 """
@@ -25,7 +25,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from brisc_fingerprinting import (  # noqa: E402
     choose_features,
     learn_dictionary,
-    load_and_normalize,
+    load_qc,
+    normalize_counts,
     write_dictionary_rds,
 )
 
@@ -73,29 +74,32 @@ def main(argv=None):
 
     print(f"[run] {len(paths)} h5ad file(s)")
 
-    # Load + normalize once (reused for feature selection if requested).
-    sc = load_and_normalize(
-        paths,
-        qc_column=args.qc_column,
-        normalize_method=args.normalize_method,
-        num_threads=args.num_threads,
-    )
-    print(f"[run] loaded {sc.shape[0]} QC-passing cells x {sc.shape[1]} genes")
+    # Load QC-filtered RAW counts first: expression-based feature selection must see raw counts
+    # (matching R ChooseFeatures), so it runs before normalization.
+    sc = load_qc(paths, qc_column=args.qc_column, num_threads=args.num_threads)
+    print(f"[run] loaded {sc.shape[0]} QC-passing cells x {sc.shape[1]} genes (raw)")
 
+    features = None
     if args.features_file:
         with open(args.features_file) as fh:
             features = [ln.strip() for ln in fh if ln.strip()]
         print(f"[run] {len(features)} features from {args.features_file}")
-    else:
+    elif args.choose_features == "expression":
+        features = choose_features(sc, method="expression", mean_expression=args.mean_expression)
+        print(f"[run] chose {len(features)} features via method='expression' (raw counts)")
+
+    # Normalize for fingerprint learning (and DE feature selection, which uses normalized data).
+    sc = normalize_counts(sc, normalize_method=args.normalize_method)
+
+    if features is None:  # --choose-features de
         features = choose_features(
             sc,
-            method=args.choose_features,
+            method="de",
             perturbation_column=args.perturbation_column,
             control_class=args.control_class,
             max_per_perturbation=args.max_per_perturbation,
-            mean_expression=args.mean_expression,
         )
-        print(f"[run] chose {len(features)} features via method='{args.choose_features}'")
+        print(f"[run] chose {len(features)} features via method='de' (normalized)")
 
     result = learn_dictionary(
         paths=None,

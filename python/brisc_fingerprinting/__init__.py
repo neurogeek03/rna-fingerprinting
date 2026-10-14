@@ -8,7 +8,7 @@ byte-compatible with the existing R ``classify()``/``FingerprintCells()`` downst
 See ``BRISC_PORT_PLAN.md`` and ``CLAUDE.md`` for the algorithm spec and compatibility contract.
 """
 
-from .scaling import load_and_normalize, build_feature_matrix, gene_mean_sd
+from .scaling import load_and_normalize, load_qc, normalize_counts, build_feature_matrix, gene_mean_sd
 from .fit import fit
 from .learn_dictionary import learn_dictionary
 from .choose_features import choose_features
@@ -17,6 +17,8 @@ from .rds_io import write_dictionary_rds
 
 __all__ = [
     "load_and_normalize",
+    "load_qc",
+    "normalize_counts",
     "build_feature_matrix",
     "gene_mean_sd",
     "fit",
