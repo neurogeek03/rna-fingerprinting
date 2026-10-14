@@ -38,3 +38,25 @@ not bit-identical to Seurat).
 
 **How to validate:** reuse `brisc_adaptation/validation/` as-is (same CPA data, same 896 features,
 same control) and just set `scaling='pearson'` in `compare_python.py`; expect r to move 0.87 → ~0.95.
+
+---
+
+## 2. Grouping resolution: subclass vs class (note, revisit after the first per-subclass run)
+
+**Status:** noted 2026-10-14. The current run uses `GROUP_COLUMN=predicted_subclass`. Not blocking.
+
+**Why it matters.** Real counts (`subclass_counts/report.txt`, from
+`python/scripts/tabulate_subclass_counts.py`): the median eligible knockout × subclass pair has
+**20 cells** (q90 70, max 440). At class level (`predicted_class`, 33 classes) it is **52** (q90 229).
+With k = 12,306 features, 20 cells is below the rank-1 detection threshold for moderate effects
+(√(k/n) ≈ 25), and it is the same regime as the one-file smoke test, where only ~10% of
+perturbations passed. The preprint split by "major cell type", which is closer to class.
+Details: `docs/why_brisc_full_atlas.md` (Resolution section).
+
+**What to do.**
+- From the per-subclass run's `summary.tsv`, check the pass rate (`n_kept / n_candidates`) against
+  subclass size.
+- If it is low, rerun the same files with `GROUP_COLUMN=predicted_class` and compare. No code change
+  is needed.
+- Other levers: fewer features (lower k), or FDR control across the ~75k pairs instead of p < 0.05
+  per pair.

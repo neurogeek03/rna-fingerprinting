@@ -1,5 +1,22 @@
 # The thread-scaling paradox
 
+> **Correction (2026-10-14, later the same day): the main cause was oversubscription, not the GIL.**
+> Run B's "192 × 1" was really **192 × 192**. `threadpool_limits(1)` was set in the main thread, but
+> with MKL's Intel-OpenMP layer the BLAS thread count is **per thread**, so joblib's worker threads
+> kept the startup `OMP_NUM_THREADS=192`. That meant ~37k BLAS threads on 192 cores. Run A was fast
+> because its 2-thread limit came from the *environment* (`OMP_NUM_THREADS=2`), which every thread
+> inherits. A third run (96 workers with the same main-thread-only limit, so really 96 × 192) also made
+> no progress in 36 min, which confirms it.
+> `python/tests/check_thread_limits.py` demonstrates the mechanism. Workers report 8 BLAS threads
+> under a main-thread `limit=1`, and 1 thread only when the limit is set inside the worker. `fit()`
+> now does the latter (`_fit_one_limited`).
+>
+> What still holds: retrograde scaling is real, a thread-count sweep is still the right way to pick
+> `n_jobs`, and the searchsorted Wilcoxon still cuts per-task work (6.3x / 2.0x faster). The GIL and
+> memory-bandwidth effects below are secondary at most; we have not measured them separately. The
+> lesson is sharper than "don't max out threads": **verify that a thread limit actually reaches the
+> threads doing the work.** Nested parallelism (joblib threads × BLAS threads) fails silently.
+
 ![Thread scaling paradox](thread_scaling_paradox.svg)
 
 ## TL;DR

@@ -47,7 +47,10 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$CORES}; export OPENBLAS_NUM_THREADS=$
 
 # Log timestamps in the host timezone (the container defaults to UTC).
 export TZ=${TZ:-$(readlink -f /etc/localtime 2>/dev/null | sed -n "s|.*/zoneinfo/||p")}
-[ -n "$TZ" ] || unset TZ
+[ -n "$TZ" ] || TZ=$(timedatectl show -p Timezone --value 2>/dev/null)
+# Compute nodes may have neither a zoneinfo symlink nor timedatectl; fall back to the cluster's zone
+# (SciNet Trillium = Toronto). Override with TZ=... on other clusters.
+export TZ=${TZ:-America/Toronto}
 
 case "$FEATURE_MODE" in
   file) FEAT_ARGS=(--features-file "$FEATURES_FILE") ;;

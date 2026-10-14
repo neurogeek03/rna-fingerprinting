@@ -114,6 +114,12 @@ def _wilcox_per_feature(ctrl_keys, n1, pert_res_fx, chunk: int = 1024):
     return U1, pval
 
 
+def _fit_one_limited(blas_threads, *args):
+    """Run :func:`_fit_one` with this worker thread's BLAS limited to ``blas_threads`` threads."""
+    with threadpool_limits(limits=blas_threads, user_api="blas"):
+        return _fit_one(*args)
+
+
 def _fit_one(
     name,
     idx,
@@ -306,27 +312,27 @@ def fit(
     # Per-perturbation loop (embarrassingly parallel, as in R pbmclapply). The threading backend
     # shares the read-only sparse ``Xf`` across workers; the numpy/scipy heavy lifting releases the GIL.
     # ``return_as='generator'`` yields results in input order as they finish, for progress logging.
-    # BLAS gets cores // n_jobs threads per worker here so workers x BLAS threads == cores (all-core
-    # BLAS per worker would oversubscribe). The control PCA above runs with the process-wide BLAS
-    # threads (OMP/MKL_NUM_THREADS, set to all cores by the run scripts). Measured on Trillium
-    # (two-file set): 96 workers x 2 BLAS is >10x faster than 192 x 1 -- see
-    # brisc_adaptation/docs/thread_scaling_paradox.md.
+    # BLAS gets cores // n_jobs threads per worker so workers x BLAS threads == cores. The limit must
+    # be set INSIDE each worker thread: with MKL's Intel-OpenMP layer the BLAS thread count is
+    # per-thread, so a threadpool_limits() in the main thread does not reach joblib's workers, which
+    # keep the startup OMP/MKL_NUM_THREADS (all cores, for the control PCA above). Without this every
+    # worker ran 192-thread BLAS (96 x 192 threads on 192 cores) -- see python/tests/check_thread_limits.py
+    # and brisc_adaptation/docs/thread_scaling_paradox.md.
     results = []
     step = max(1, n_total // 10)
     blas_per_job = max(1, (os.cpu_count() or 1) // max(1, n_jobs))
-    with threadpool_limits(limits=blas_per_job, user_api="blas"):
-        gen = Parallel(n_jobs=n_jobs, backend="threading", return_as="generator")(
-            delayed(_fit_one)(
-                p, idx_by_pert[p], Xf, gene_mean, gene_sd, rotation, ctrl_mus,
-                ctrl_res_fx, ctrl_keys, features, min_cells, override_filter,
-            )
-            for p in perturbations
+    gen = Parallel(n_jobs=n_jobs, backend="threading", return_as="generator")(
+        delayed(_fit_one_limited)(
+            blas_per_job, p, idx_by_pert[p], Xf, gene_mean, gene_sd, rotation, ctrl_mus,
+            ctrl_res_fx, ctrl_keys, features, min_cells, override_filter,
         )
-        for i, r in enumerate(gen, 1):
-            results.append(r)
-            if i % step == 0 or i == n_total:
-                n_kept = sum(x is not None for x in results)
-                log(f"[fit] {i}/{n_total} perturbations done, {n_kept} kept so far")
+        for p in perturbations
+    )
+    for i, r in enumerate(gen, 1):
+        results.append(r)
+        if i % step == 0 or i == n_total:
+            n_kept = sum(x is not None for x in results)
+            log(f"[fit] {i}/{n_total} perturbations done, {n_kept} kept so far")
 
     # Perturbation name cleaning (R: replace [,;_] with '-', then make unique).
     raw_names = [r[0] for r in results if r is not None]

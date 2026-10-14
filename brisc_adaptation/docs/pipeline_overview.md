@@ -84,10 +84,10 @@ dictionary sees every cell of that subclass.**
 ## Why the cell count matters
 
 Steps A2–A5 all estimate something from cells, and every one of those estimates gets better with
-more cells. The bottleneck is cells per knockout *within a subclass*. Splitting about 2,000 cells per
-knockout across subclasses leaves most knockout × subclass pairs with (we expect) tens to hundreds of cells, even
-on the full atlas. A 10x downsample would push most of them below the 10-cell minimum. Splitting by
-subclass is the reason every cell matters.
+more cells. The bottleneck is cells per knockout *within a subclass*. A knockout has about 1,700
+cells in total, spread over about 39 subclasses. On the full atlas the median knockout × subclass
+pair therefore has **20 cells** (max 440). A 10x downsample would remove 95% of the usable pairs.
+Splitting by subclass is the reason every cell matters.
 [`why_brisc_full_atlas.md`](why_brisc_full_atlas.md#why-each-step-needs-cells) goes through each step.
 
 ## Glossary

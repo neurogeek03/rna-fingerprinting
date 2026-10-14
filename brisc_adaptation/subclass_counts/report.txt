@@ -1,0 +1,24 @@
+files: 14   QC cells: 6,127,364   kept after label collapse: 5,463,284
+controls: 2,192,405   knockouts: 1,947   subclasses: 320
+
+== Pooled (whole atlas)
+cells per knockout: n=1,947  q10=1,034  q25=1,312  q50=1,663  q75=2,001  q90=2,356  q100=3,838
+
+== Subclasses
+cells per subclass: n=320  q10=14  q25=307  q50=3,784  q75=12,314  q90=35,049  q100=494,971
+controls per subclass: n=320  q10=7  q25=143  q50=1,768  q75=5,662  q90=12,872  q100=134,420
+subclasses with >= 30 controls: 265 / 320   (>= 1,000: 187;  >= k=12,306: 35)
+subclasses with >= 30 controls after 10x downsample: 223
+largest subclasses (cells, controls, dense R scale.data at k features, float64):
+  151 TH Prkcd Grin2c Glut: 494,971 cells, 128,453 controls, 49 GB
+  052 Pvalb Gaba: 337,337 cells, 125,593 controls, 33 GB
+  006 L4/5 IT CTX Glut: 306,684 cells, 134,420 controls, 30 GB
+  022 L5 ET CTX Glut: 204,676 cells, 72,638 controls, 20 GB
+  007 L2/3 IT CTX Glut: 202,647 cells, 88,834 controls, 20 GB
+
+== Knockout x subclass pairs (eligible: >= 10 cells and subclass >= 30 controls)
+all pairs: 325,185   eligible: 75,116   eligible after 10x downsample: 3,877
+cells per eligible pair: n=75,116  q10=11  q25=13  q50=20  q75=39  q90=70  q100=440
+eligible pairs with >= 150 cells: 1,704;  >= 2,000: 0
+knockouts with >= 1 eligible subclass: 1,947 / 1,947   (after 10x downsample: 1,854)
+eligible subclasses per knockout: n=1,947  q10=25  q25=31  q50=39  q75=46  q90=52  q100=75

@@ -117,6 +117,19 @@ Confirmed from the data (QC cells, one file): `Negative` = **cells with no guide
   features): R's real SCTransform + `LearnDictionary` vs the Python port. Both keep the same
   perturbations with matching sign; **signed Pearson r = +0.866 (CPSF6), +0.864 (PABPN1)**, top-20 gene
   overlap 11–12/20. Gap attributed to z-score(log1pPF) vs SCTransform Pearson residuals; **accepted**.
+- **Full atlas, per subclass (Trillium job 2562632, 2026-10-14): passes.** All 14 h5ads went through
+  the per-file loader: 6,127,364 QC cells and 11,736 expression-selected features. The run took
+  **1 h 40 min**. Peak RSS was 431 GB in the process log and 508 GB in Slurm MaxRSS, on a ~745 GiB
+  node. `.err` was empty and the exit code 0.
+  - Subclasses: of 321, 265 have ≥ 30 controls, matching `subclass_counts/report.txt`. 148 have no
+    knockout with ≥ 10 cells, 56 have < 30 controls, 33 had no fingerprint pass the filter, and
+    **84 wrote a dictionary**.
+  - Fingerprints: 6,618 kept out of 74,878 candidate knockout × subclass pairs, about 8.8%. That is
+    a median of 45 per written subclass (range 1–548). The largest are TH Prkcd Grin2c 548/1,947,
+    L4/5 IT CTX 543, Pvalb 408 and L5 ET CTX 357.
+  - All 84 `.rds` pass `validation/check_dictionary_rds.R`
+    (`validation/check_all_dictionaries.sh`).
+  - Output: `/scratch/mfafouti/Perurb-seq_WMB/dict_wholebrain_by_subclass/` (+ `summary.tsv`).
 
 ## 9. One dictionary per subclass (2026-10-14)
 
@@ -144,6 +157,21 @@ has the same rows. (R per-subset SCTransform would be per-subclass; revisit if n
 `min_cells` and the Wilcoxon filter has less power. Check `summary.tsv` from a smoke test before the
 full run. Phase B must also be per subclass (in `/scratch/mfafouti/RNA-fingerprinting-satija`).
 
+## 10. Threading in `fit()` (2026-10-14)
+
+**Bug.** The BLAS thread cap for the per-perturbation loop was set with `threadpool_limits` in the
+main thread. With MKL's Intel-OpenMP layer that limit is per-thread and does not reach joblib's worker
+threads, so they used the startup `OMP_NUM_THREADS`. The run scripts set that to all cores (for the
+control PCA), which gave 96–192 workers × 192 BLAS threads and no progress in 20–36 min on the
+two-file set. **Fix:** `_fit_one_limited` sets the cap inside each worker (cores // n_jobs).
+Mechanism test: `python/tests/check_thread_limits.py`. Write-up:
+`docs/thread_scaling_paradox.md` (top correction).
+
+**Wilcoxon.** `_wilcox_per_feature` now uses sorted control keys + one `searchsorted` per feature
+chunk instead of re-ranking the fixed 1,000-cell reference every task. U is identical to the rankdata
+version (`python/tests/test_wilcox.py`). It is 6.3x faster at n_p=200 and 2.0x at n_p=2000 (single
+thread).
+
 ## Open / to-do
 
 - [x] §4 Wilcoxon speedup — applied (`fit.py`).
@@ -154,6 +182,10 @@ full run. Phase B must also be per subclass (in `/scratch/mfafouti/RNA-fingerpri
 - [ ] Confirm `Safe_target_*` treatment is acceptable (currently: control, not perturbation).
 - [x] §9 per-subclass dictionaries — applied; synthetic test passes.
 - [ ] Smoke-test per-subclass on 1–2 files; inspect `summary.tsv` (controls, candidates, kept per subclass).
+- [ ] **Resolution: subclass vs class.** Real counts (`subclass_counts/report.txt`): the median
+      eligible knockout × subclass pair has 20 cells (q90 70), versus 52 (q90 229) per class. That is
+      below the rank-1 detection threshold for moderate effects. Smoke-test both
+      `GROUP_COLUMN=predicted_subclass` and `predicted_class`, then decide (see `docs/why_brisc_full_atlas.md`).
 - [ ] Full-atlas run across all 14 h5ads once single-file validation looks good.
 - [ ] Phase B per subclass in the consuming project (subset query by subclass, matching `.rds`).
 - Deferred (see `future_todos.md`): analytic Pearson residuals for tighter R agreement (~0.95+).

@@ -1,172 +1,184 @@
-# Why BRISC + the full Perturb-seq atlas (vs subsetting for R/Seurat)
+# Why BRISC + the full Perturb-seq atlas (per-subclass dictionaries)
 
 New to the method? Read [`pipeline_overview.md`](pipeline_overview.md) first.
 
-Written 2026-10-14. Rough numbers come from the Trillium smoke test on one file (`WB8588_1_1.h5ad`):
-62.9k QC cells, 22.4k controls, 1,947 candidate perturbations, about 20 cells per perturbation, 12,306
-expression-selected features, and 170 of 1,736 eligible perturbations kept. That file is about 1% of
-the 6.1M QC cells. Scaling up gives **about 2,000 cells per perturbation on the full atlas**, versus
-**about 150** for a downsample R could handle (about 500k cells).
+Rewritten 2026-10-14 for per-subclass dictionaries (`../decisions_log.md` §9). The counts are real.
+They come from the obs of all 14 h5ads, via
+[`tabulate_subclass_counts.py`](../../python/scripts/tabulate_subclass_counts.py). The output is in
+[`../subclass_counts/report.txt`](../subclass_counts/report.txt), and class level in
+[`../subclass_counts/by_class/`](../subclass_counts/by_class/). Labels are collapsed the way the
+pipeline collapses them. An "eligible" pair has ≥ 10 cells (`min_cells`) in a subclass with
+≥ 30 controls. k = 12,306 features.
 
-> **Update (same day): dictionaries are now learned per subclass**, as the authors do per cell type
-> (`../decisions_log.md` §9). The tables below quote cells per perturbation across the whole atlas.
-> Per subclass, n_p is the cells of one knockout *within one subclass*, which is much smaller. Most
-> knockout × subclass pairs therefore sit in the lower rows of each table (tens to a few hundred
-> cells), and a 10x downsample would push many of them below `min_cells = 10`. The per-subclass split
-> makes the full atlas more necessary, not less. Measure the real per-subclass counts from
-> `summary.tsv` after the smoke test.
+## In short
 
-## Statistical consequences
+- **Statistics: the full atlas matters more than before.** The median eligible knockout × subclass
+  pair has **20 cells** (q90 70, max 440). That is the low-power regime of the smoke test, where only
+  about 10% of perturbations passed the filter. A 10x downsample cuts eligible pairs from **75,116 to
+  3,877**.
+- **Memory: no longer the reason to use BRISC.** The largest subclass is 495k cells, which is about
+  49 GB dense in R. R could run per subclass on full data without downsampling. The case for BRISC is
+  now practical (one job, one normalization, speed), not "the only thing that fits".
+- **Open design question: subclass may be too fine.** At class level (33 classes), the median pair has
+  52 cells and q90 has 229. See [Resolution](#resolution-subclass-vs-class).
 
-| Dimension | Downsample (~500k, R) | Full atlas (6.1M, BRISC) | Scaling argument |
+## The counts
+
+| | Pooled (one dictionary) | Per class (33) | **Per subclass (320)** |
 |---|---|---|---|
-| Cells per perturbation | ~150 | ~2,000 | linear in n |
-| Wilcoxon filter (p<0.05, and at least 2 of the top-10 features DE) | Misses modest effects. Only 170 of 1,736 passed at about 20 cells. | Most real effects should pass | z ~ effect·√n_eff. The control reference is fixed at 1,000 cells, so the gain is about 2.3x the z, not 3.6x |
-| Rank-1 PCA stability (12k features) | Detection threshold √(features/cells) ≈ 9 | Threshold ≈ 2.5 | Spiked-covariance (BBP) threshold |
-| MAD ≥ 10 outlier removal | MAD relative error ~10% (26% at 20 cells). Removals push perturbations toward `min_cells=10`. | ~3% | ~1.17/√n |
-| `dists` means/SDs (classify() calibration) | Standard error ~0.08σ | Standard error ~0.02σ | 1/√n |
-| Control baseline (30-PC PCA, per subclass) | Rare subclasses fall below 30 controls and get no dictionary | ~10x more subclasses clear the 30-control bar | Linear in n |
-| Cell-type/region coverage | Perturbations in rare types fall below `min_cells` | Full coverage | — |
-| Reproducibility | Results depend on which subset was sampled (seed, stratification) | Deterministic over all cells. No sampling choices to justify. | — |
+| Groups with ≥ 30 controls | — | 29 | **265** (223 after 10x downsample) |
+| Controls per group (median) | 2.19M total | 16,607 | **1,768** (35 subclasses have ≥ k) |
+| Cells per knockout or pair: median | 1,663 | 52 | **20** |
+| Cells per knockout or pair: q90 / max | 2,356 / 3,838 | 229 / 1,105 | **70 / 440** |
+| Eligible units | 1,947 knockouts | 33,530 pairs | **75,116 pairs** |
+| Eligible after 10x downsample | — | 8,042 (24%) | **3,877 (5%)** |
+| Eligible groups per knockout (median) | 1 | 17 | **39** |
+| Largest group, dense R `scale.data` (k, float64) | 6.1M cells, ~600 GB | 1.6M cells, 159 GB | **495k cells, 49 GB** |
+
+6.13M QC cells. 5.46M remain after dropping multi-gene combos, of which 2.19M are controls.
+There are 1,947 single-gene knockouts.
 
 ## Why each step needs cells
 
-Each subsection covers what the step does, why `fit()` has it, and how the cell count enters.
-n_p is the number of cells for one perturbation: about 20 in the smoke test, 150 in a 500k
-downsample and 2,000 on the full atlas. k = 12,306 features. Code refs are to
-[`R/fit.R`](../../R/fit.R).
+n_p is now the number of cells of one knockout *within one subclass*: about 20 at the median, 70 at
+q90, 440 at most. A 10x downsample makes the median pair about 2 cells, which is not fittable.
+Code refs are to [`R/fit.R`](../../R/fit.R).
 
 ### Wilcoxon tests (fit.R:61-65, 96-99)
 
 **Why they exist.** Rank-1 PCA returns a direction but not its sign: Lambda and −Lambda fit equally
 well. PCA also has no notion of significance, so it returns a "fingerprint" even for a perturbation
-that does nothing. The Wilcoxon tests compare the perturbation's residuals with 1,000 control
-residuals, and they have three jobs:
+that does nothing. The Wilcoxon tests compare the perturbation's residuals with control residuals,
+and they have three jobs:
 
 1. **Orient the sign.** A per-feature rank-sum statistic gives the direction of each gene's shift
-   relative to controls. Lambda is flipped so that it is anti-correlated with the control-group
-   statistic (fit.R:90-93). With this convention, a positive Lambda entry means the gene goes up in
-   perturbed cells.
+   relative to controls. Lambda is flipped to be anti-correlated with the control-group statistic
+   (fit.R:90-93), so a positive Lambda entry means the gene goes up in perturbed cells.
 2. **Choose among outlier iterations.** Each pass of the MAD loop produces a candidate Lambda. The
-   one most correlated with the Wilcoxon statistics wins (fit.R:84), because it best matches the
-   gene-by-gene differences from controls.
-3. **Filter.** Two tests must both pass: the cell scores (ell) differ from controls projected onto
-   Lambda (p < 0.05), and at least 2 of the 10 top-weighted genes are individually DE (p < 0.05).
-   Without this filter the dictionary fills up with noise fingerprints. Those compete in SuSiE and
-   spread the probability away from the true matches.
+   one most correlated with the Wilcoxon statistics wins (fit.R:84).
+3. **Filter.** Both tests must pass: the cell scores (ell) differ from controls projected onto Lambda
+   (p < 0.05), and at least 2 of the 10 top-weighted genes are individually DE (p < 0.05). Without
+   this, noise fingerprints crowd the dictionary and steal SuSiE probability from true matches.
 
-**How n enters.** A rank-sum z-score grows as effect × √n_eff, where
-n_eff = n_p · n_ref / (n_p + n_ref) and n_ref = 1,000 control residuals. The fixed 1,000-cell
-reference caps the gain:
+**How n enters.** z grows as effect × √n_eff, where n_eff = n_p · n_ref / (n_p + n_ref) and
+n_ref = min(1,000, the subclass's controls). With n_p this small, n_p dominates, and the 1,000-cell
+cap rarely matters any more:
 
-| n_p | n_eff | z relative to the 150-cell downsample |
+| n_p | n_eff (n_ref = 1,000) | z relative to the median pair |
 |---|---|---|
-| 20 (smoke test) | 20 | 0.39x |
-| 150 (downsample) | 130 | 1x |
-| 2,000 (full atlas) | 667 | **2.3x** |
-| 2,000, with the reference raised to 10,000 | 1,667 | 3.6x |
+| 2 (median pair after 10x downsample) | 2 | not fittable (< `min_cells`) |
+| 20 (median pair) | 19.6 | 1x |
+| 70 (q90 pair) | 65 | 1.8x |
+| 440 (largest pair) | 306 | 4.0x |
 
-Only 170 of 1,736 eligible perturbations passed in the smoke test. At 2.3x the z, an effect at the
-edge of detection in the downsample (z ≈ 2) reaches z ≈ 4.5. The per-gene DE test in criterion (ii)
-gains in the same way, so more of the top-10 genes clear p < 0.05. Raising the 1,000-cell reference
-costs very little now that the controls are in memory anyway. It is an easy extra lever, but it
-needs an R-parity decision because R hard-codes 1,000.
+The smoke test (one file, pooled, about 20 cells per knockout) kept 170 of 1,736. Most per-subclass
+pairs sit at that same n. Expect a low pass rate per pair, and use the smoke test's `summary.tsv` to
+measure it.
 
 ### Control baseline PCA (fit.R:19-29)
 
 **Why it exists.** Even within one subclass, cells vary by region and state, and that variation is
-not caused by the perturbation. If it were not removed, a perturbation's rank-1 PCA could just find
-"anterior vs posterior" or "active vs resting". The 30 control PCs model this baseline, and
-subtracting them leaves only what the perturbation adds. Splitting by subclass removes cell-type
-identity from the baseline problem altogether. A single pooled baseline could not do this: 30 PCs
-for about 300 subclasses.
+not caused by the perturbation. The 30 control PCs model this baseline, and subtracting them leaves
+only what the perturbation adds. Per-subclass baselines remove cell-type identity from the problem;
+30 pooled PCs could not model about 300 subclasses.
 
-**How n enters.** Each subclass now has its own control PCA, on that subclass's controls only. The
-PCs are noisy when n_ctrl is small compared with k = 12k features, and the preprint's floor is
-30 controls. A 10x downsample takes a subclass with 300 controls down to 30. So on the full atlas
-many more subclasses get a dictionary at all, and the ones that do get a better-estimated baseline.
+**How n enters.** Each subclass's PCA uses only its own controls: a median of 1,768, and only 35 of
+320 subclasses have more controls than features (k). Below that, PC directions are noisy. A 10x
+downsample drops 42 more subclasses below the 30-control floor (265 → 223) and leaves the median
+subclass with about 177 controls.
 
 ### Rank-1 PCA → Lambda (fit.R:55, 74)
 
-**Why it exists.** It summarizes a perturbation's residuals (n_p cells × k genes) as one gene
-direction, the fingerprint. This is the dictionary entry.
+**Why it exists.** It summarizes one knockout's residuals (n_p cells × k genes) as one gene direction,
+the fingerprint.
 
-**How n enters.** Random-matrix theory (the BBP phase transition) gives a sharp threshold. Take a
-signal of strength θ, measured as the squared length of the mean shift in per-gene noise-SD units.
-For example, 50 genes shifted by 0.5 SD gives θ ≈ 12.5. The estimated Lambda carries **no
-information** about the true direction unless θ > √(k/n_p). Above that threshold, the squared cosine
-between the estimate and the truth is (1 − γ/θ²) / (1 + γ/θ), with γ = k/n_p.
+**How n enters.** Random-matrix theory (the BBP phase transition) sets a hard limit. Let θ be the
+signal strength: the squared length of the mean shift in per-gene noise-SD units. For example,
+50 genes shifted by 0.5 SD gives θ ≈ 12.5, and 100 genes gives θ ≈ 25. Lambda carries **no
+information** about the true direction unless θ > √(k/n_p). Above that, the squared cosine with the
+truth is (1 − γ/θ²) / (1 + γ/θ), with γ = k/n_p.
 
-| n_p | √(k/n_p), the detection threshold | cos(Lambda, truth) at θ = 12 |
-|---|---|---|
-| 20 | 24.8 | 0 (below threshold) |
-| 150 | 9.1 | 0.23 |
-| 2,000 | 2.5 | **0.80** |
+| n_p | Threshold √(k/n_p) | cos(Lambda, truth) at θ = 12 | at θ = 25 |
+|---|---|---|---|
+| 20 (median subclass pair) | 24.8 | 0 | 0.03 |
+| 52 (median class pair) | 15.4 | 0 | 0.24 |
+| 70 (q90 subclass pair) | 13.3 | 0 | 0.30 |
+| 229 (q90 class pair) | 7.3 | 0.34 | 0.54 |
+| 440 (largest subclass pair) | 5.3 | 0.49 | 0.67 |
+| 1,663 (median pooled knockout) | 2.7 | 0.77 | 0.87 |
 
-A moderate perturbation that is undetectable at 20 cells and mostly noise at 150 becomes a
-recognizable fingerprint at 2,000 cells. This is the largest single gain from using the full atlas.
-(Selecting fewer features lowers k, which is a second lever, but it discards genes.)
+At the median subclass pair, only strong perturbations (θ well above 25) produce a usable
+fingerprint. Fewer features is a second lever: at k = 2,000 the threshold at n_p = 20 drops to 10.
+But that discards genes, and with them some of the signal.
 
 ### MAD outlier loop (fit.R:57-81)
 
-**Why it exists.** SVD minimizes squared error, so a few extreme cells can capture the whole rank-1
-fit. Doublets, damaged cells and rare strong responders all do this, and the result is a Lambda
-that describes those cells rather than the perturbation. Cells whose score sits ≥ 10 MADs from the
-median are dropped and the fit is redone. The Wilcoxon correlation then chooses the best iteration.
+**Why it exists.** SVD minimizes squared error, so a few extreme cells (doublets, damaged cells,
+rare strong responders) can capture the whole rank-1 fit. Cells ≥ 10 MADs from the median score are
+dropped and the fit is redone.
 
-**How n enters.** In three ways:
-
-- **MAD precision.** With `constant = 1`, the relative standard error of the MAD is about 1.17/√n:
-  26% at 20 cells, 10% at 150, 3% at 2,000. At small n an underestimated MAD flags normal cells as
-  outliers.
-- **Leverage.** With few cells, one cell is a large share of the total variance, so a single cell
-  captures the rank-1 fit more often. Heavy-tailed scores trigger more removal rounds.
-- **Attrition.** Each removal costs more at small n. At 20 cells, two rounds can push a perturbation
-  below `min_cells = 10`, and the loop then stops early with a poor Lambda. At 2,000 cells, removing
-  a few cells changes nothing.
+**How n enters.**
+- **Precision.** The MAD's relative error is about 1.17/√n: 26% at 20 cells, 14% at 70, 6% at 440.
+- **Leverage.** At 20 cells, one cell is 5% of the data and can capture the fit.
+- **Attrition.** At 20 cells, removing a few outliers can push a pair below `min_cells = 10`, and
+  the loop then stops early.
 
 ### `dists` → classify() calibration (fit.R:103-108; classify.R:167-178)
 
-**Why it exists.** Lambda is an estimate. `dists` stores, for every gene, the mean and SD of that
-estimate. `classify()` draws 50 resampled dictionaries from N(mean, SD) and recomputes the SuSiE
-probabilities on each. A fingerprint whose entries are poorly known therefore gets less confident
-assignments, and correlated fingerprints share the probability more evenly.
+**Why it exists.** `dists` stores a mean and SD per gene for each Lambda. `classify()` draws 50
+dictionaries from N(mean, SD) and recomputes the SuSiE probabilities, so poorly known fingerprints
+get less confident matches.
 
-**How n enters.** sds = √(σ² / Σell²), and Σell² grows in proportion to n_p, so the SD shrinks as
-1/√n_p: about 0.08σ at 150 cells and 0.02σ at 2,000. With wide SDs, the 50 resamples scatter, the
-credible sets widen and more query cells end up "unassigned". The calibration is honest about the
-uncertainty, but that uncertainty comes from too few cells, not from the biology.
+**How n enters.** SD ∝ 1/√n_p: about 0.22σ at 20 cells, 0.12σ at 70 and 0.05σ at 440, compared
+with 0.02σ for a pooled knockout. Wide SDs give wider credible sets and more "unassigned" query
+cells.
 
-## Engineering and fidelity
+## Engineering: BRISC vs R per subclass
 
-| | R/Seurat (subset) | BRISC port (full) |
+The honest comparison is now **R per subclass on full data vs BRISC per subclass**. Downsampling is
+what destroys the statistics, and with per-subclass runs R no longer has to downsample.
+
+| | R/Seurat, per subclass | BRISC port, per subclass |
 |---|---|---|
-| Memory | Dense SCTransform `scale.data` ≈ 240 GB at 6.1M × 5k features (float64), which forces subsetting | Sparse counts ~196 GB per copy, ~392 GB transient peak. The dense control block in `fit()` is ~110 GB (float32, centered in place). Fits on one Trillium node (~745 GiB). |
-| Runtime | `pbmclapply` over cell-level dense data | ~2 min per small file on a 192-core node. Full atlas not yet measured. |
-| Normalization | SCTransform Pearson residuals (the reference) | Global z-score of log1pPF. Signed r ≈ 0.87 vs R on the CPA example, with 11–12 of the top-20 genes shared. |
+| Memory | Largest subclass 495k cells → dense `scale.data` ≈ 49 GB at k (float64), plus SCTransform's own working memory. Feasible on a large node. | One process: sparse counts ~196 GB per copy, ~400 GB peak during load/normalize. Then one subclass at a time; the largest control block is ~7 GB float32. |
+| Workflow | Split the atlas into ~265 objects outside R (a 6.1M-cell Seurat object is itself heavy), then 265 × (SCTransform + `LearnDictionary`) | One job: load and normalize once, loop over subclasses |
+| Runtime | 265 SCTransform fits; not measured | Not measured per subclass (pooled: ~2 min per small file on 192 cores) |
+| Normalization | SCTransform Pearson residuals, run per subclass (the reference) | log1pPF + per-subclass z-score. Signed r ≈ 0.87 vs R on the CPA example |
 
-## Downsides of the full-data approach
+At class level the memory argument returns. The largest class is 1.6M cells, ≈ 159 GB dense in R
+before SCTransform overhead.
 
-- **Per-subclass power.** Per-subclass dictionaries (matching the authors) remove the pooled-baseline
-  confound, but split the cells. Small subclasses and rarely-hit knockouts will still fall below
-  `min_cells` or the 30-control floor, even on the full atlas.
-- **Shared features and log1pPF target.** These are global across subclasses (z-score stats are per
-  subclass). R would SCTransform each subset separately.
-- **The filter does not tighten as n grows.** At ~2,000 cells, p<0.05 is easy to pass, so weak or
-  confounded signals can get through: DNA-damage response, transduction bias in the `Negative`
-  (no-guide) controls. Consider an effect-size or FDR threshold. The Wilcoxon control reference
-  stays fixed at 1,000 cells, which caps the power gain (see the Wilcoxon section above).
-- **Not SCTransform.** At r ≈ 0.87, fingerprints are close to published R dictionaries but not
-  interchangeable with them. Analytic Pearson residuals are deferred work, expected to reach ~0.95
-  (see `../future_todos.md`).
-- **Still heavy.** It needs a full large-memory node. Survival counts and runtime for the full atlas
-  are projections until that run happens.
+## Resolution: subclass vs class
+
+The preprint splits by "major cell type". Our subclass level is much finer:
+
+| | Class (33) | Subclass (320) |
+|---|---|---|
+| Median / q90 cells per pair | 52 / 229 | 20 / 70 |
+| Eligible pairs | 33,530 | 75,116 |
+| Biology | Broad (e.g. "IT-ET Glut") | Specific (e.g. "L4/5 IT CTX Glut") |
+
+Subclass gives specificity, but most pairs fall below the rank-1 detection threshold for moderate
+effects. Class has 2.6x more cells per median pair, and its q90 pairs reach the usable range.
+`predicted_group` (31) and `neuron_type` (10) are also in obs. Recommendation: run the two-file smoke
+test at both levels (`GROUP_COLUMN=predicted_class` vs `predicted_subclass`) and compare pass rates in
+`summary.tsv` before the full run.
+
+## Downsides of the current approach
+
+- **Low n per pair at subclass level** (above). The full atlas helps, but it cannot fix this.
+- **Shared features and log1pPF target** across subclasses (z-score stats are per subclass). R would
+  run SCTransform per subset.
+- **Filter thresholds were tuned for one experiment.** p < 0.05 without multiple-testing control over
+  75k pairs will let some noise through. Consider FDR across pairs.
+- **Not SCTransform.** r ≈ 0.87 vs R. Analytic Pearson residuals are deferred
+  (`../future_todos.md`).
 
 ## Bottom line
 
-Cell count is the binding constraint. The biggest gain is rank-1 PCA: moderate perturbations cross
-the detection threshold and become usable fingerprints. Wilcoxon power, MAD robustness and `dists`
-precision all improve roughly with √n. Per-subclass dictionaries divide the cells further, so each
-subclass needs every cell it has. Subsetting cuts n by about 10x. BRISC removes the dense-matrix
-memory wall, loads and normalizes once, and then learns each subclass's dictionary from all of its
-cells. The costs are an approximate normalization and filter thresholds that may need re-tuning.
+Per subclass, cell count is even more binding: the median pair has 20 cells, and a 10x downsample
+removes 95% of eligible pairs. Whatever tool is used, **every cell must be used**. BRISC is no longer
+the only way to fit in memory at subclass level. Its advantages are one job instead of about 265, one
+consistent normalization, and likely speed. The bigger open question is resolution: at subclass
+level most pairs are below the detection threshold for moderate effects, and class level trades
+specificity for about 2.6x the cells.
