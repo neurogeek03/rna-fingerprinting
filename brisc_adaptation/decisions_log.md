@@ -97,6 +97,12 @@ Confirmed from the data (QC cells, one file): `Negative` = **cells with no guide
 - **Decision:** write the dictionary as an R `.rds` of class `dictionary` via `ryp`
   (`list(fingerprints=list(Lambdas=<features×P>, dists=<named list of features×2>), order=NULL, data=NULL)`),
   byte-compatible with the existing R `classify()`/`FingerprintCells()`. Verified via round-trip read in R.
+- **Fix (2026-10-14, Trillium smoke test):** `ryp.to_r` passes arrays as arrow-backed ALTREP vectors and
+  `saveRDS` serialized them as `arrow::array_dbl_vector` ALTVEC objects. `readRDS` in an R session without
+  the arrow package (e.g. `rna-fingerprinting_seurat-v1.sif`) warned and returned garbage (~1e-310 values).
+  `rds_io.py` now copies every vector into plain R memory before saving. Check any dictionary with
+  `Rscript brisc_adaptation/validation/check_dictionary_rds.R <file.rds>` in the R container (errors on
+  any readRDS warning; also checks structure + unit-norm Lambdas).
 
 ## 8. Validation status
 

@@ -29,26 +29,31 @@ FEATURE_MODE=${FEATURE_MODE:-expression}
 FEATURES_FILE=${FEATURES_FILE:-$REPO/features.txt}
 MEAN_EXPRESSION=${MEAN_EXPRESSION:-0.05}
 
-# Cores: use the allocation's cpus; split between joblib (per-perturbation) and BLAS (control PCA).
+# joblib workers = cores/2 (192 workers measured >10x slower; see docs/thread_scaling_paradox.md).
+# BLAS = all cores for the control PCA; fit() gives each worker cores/NJOBS BLAS threads in the loop.
 CORES=${SLURM_CPUS_ON_NODE:-$(nproc)}
 NJOBS=${NJOBS:-$(( CORES / 2 > 0 ? CORES / 2 : 1 ))}
-export OMP_NUM_THREADS=${OMP_NUM_THREADS:-2} OPENBLAS_NUM_THREADS=${OMP_NUM_THREADS:-2} MKL_NUM_THREADS=${OMP_NUM_THREADS:-2}
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$CORES}; export OPENBLAS_NUM_THREADS=$OMP_NUM_THREADS MKL_NUM_THREADS=$OMP_NUM_THREADS
+
+# Log timestamps in the host timezone (the container defaults to UTC).
+export TZ=${TZ:-$(readlink -f /etc/localtime 2>/dev/null | sed -n "s|.*/zoneinfo/||p")}
+[ -n "$TZ" ] || unset TZ
 
 case "$FEATURE_MODE" in
   file) FEAT_ARGS=(--features-file "$FEATURES_FILE") ;;
   *)    FEAT_ARGS=(--choose-features "$FEATURE_MODE" --mean-expression "$MEAN_EXPRESSION") ;;
 esac
 
-echo "host=$(hostname) cores=$CORES njobs=$NJOBS omp=$OMP_NUM_THREADS feature_mode=$FEATURE_MODE"
+echo "$(date "+%F %T") host=$(hostname) cores=$CORES njobs=$NJOBS omp=$OMP_NUM_THREADS feature_mode=$FEATURE_MODE"
 echo "h5ad_dir=$H5AD_DIR"
 echo "out=$OUT"
 
 # collapse-to-single-gene + pooled control (Negative/Non_target/Safe_target_*) are the defaults.
-time apptainer exec "$SIF" python "$REPO/python/scripts/run_learn_dictionary.py" \
+time apptainer exec "$SIF" python -u "$REPO/python/scripts/run_learn_dictionary.py" \
     --h5ad-dir "$H5AD_DIR" \
     "${FEAT_ARGS[@]}" \
     --perturbation-column gene_target \
     --qc-column passes_qc \
     --n-jobs "$NJOBS" \
     --out "$OUT"
-echo "DICT_EXIT=$? -> $OUT"
+echo "$(date "+%F %T") DICT_EXIT=$? -> $OUT"

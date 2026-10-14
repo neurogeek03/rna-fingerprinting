@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1010" height="660" viewBox="0 0 1010 660" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>RNA fingerprinting pipeline: Phase A (learn dictionary) and Phase B (fingerprint a query)</title>
+  <style>
+    .h1 { font-size: 20px; font-weight: bold; fill: #111827; }
+    .sub { font-size: 13px; fill: #4b5563; }
+    .ph { font-size: 16px; font-weight: bold; }
+    .t { font-size: 15px; font-weight: bold; fill: #111827; }
+    .d { font-size: 13px; fill: #374151; }
+    .lab { font-size: 12px; font-style: italic; fill: #374151; }
+    .grp { font-size: 13px; font-style: italic; fill: #00785a; }
+    .note { font-size: 13px; font-style: italic; fill: #0072b2; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#374151"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="1010" height="660" fill="#ffffff"/>
+
+  <!-- Header -->
+  <text x="505" y="34" class="h1" text-anchor="middle">RNA fingerprinting: the whole pipeline</text>
+  <text x="505" y="56" class="sub" text-anchor="middle">Learn one fingerprint per knockout from Perturb-seq, then explain a query response with them</text>
+
+  <!-- ===================== Phase A ===================== -->
+  <text x="34" y="96" class="ph" fill="#0072b2">Phase A: Learn the dictionary (Python / BRISC, full atlas ~6.1M cells)</text>
+
+  <!-- Dashed group around A3-A5 -->
+  <rect x="408" y="111" width="568" height="158" rx="12" fill="none" stroke="#009e73" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="692" y="290" class="grp" text-anchor="middle">Repeated for each knockout, in parallel</text>
+  <text x="34" y="290" class="note">Needs every cell. BRISC keeps it sparse (R: ~240 GB dense)</text>
+
+  <!-- A1 -->
+  <rect x="34" y="124" width="164" height="132" rx="8" fill="#dcebf7" stroke="#0072b2" stroke-width="1.5"/>
+  <text x="116" y="152" class="t" text-anchor="middle">A1 Normalize</text>
+  <text x="116" y="180" class="d" text-anchor="middle">log1pPF + per-gene</text>
+  <text x="116" y="199" class="d" text-anchor="middle">z-score, computed</text>
+  <text x="116" y="218" class="d" text-anchor="middle">on demand</text>
+
+  <!-- A2 -->
+  <rect x="226" y="124" width="164" height="132" rx="8" fill="#dcebf7" stroke="#0072b2" stroke-width="1.5"/>
+  <text x="308" y="152" class="t" text-anchor="middle">A2 Control baseline</text>
+  <text x="308" y="180" class="d" text-anchor="middle">PCA on control cells</text>
+  <text x="308" y="199" class="d" text-anchor="middle">(30 PCs) = normal</text>
+  <text x="308" y="218" class="d" text-anchor="middle">variation</text>
+
+  <!-- A3 -->
+  <rect x="418" y="124" width="164" height="132" rx="8" fill="#d5f0e8" stroke="#009e73" stroke-width="1.5"/>
+  <text x="500" y="152" class="t" text-anchor="middle">A3 Remove baseline</text>
+  <text x="500" y="180" class="d" text-anchor="middle">Project out control</text>
+  <text x="500" y="199" class="d" text-anchor="middle">PCs; what is left</text>
+  <text x="500" y="218" class="d" text-anchor="middle">= residual</text>
+
+  <!-- A4 -->
+  <rect x="610" y="124" width="164" height="132" rx="8" fill="#d5f0e8" stroke="#009e73" stroke-width="1.5"/>
+  <text x="692" y="152" class="t" text-anchor="middle">A4 Find fingerprint</text>
+  <text x="692" y="180" class="d" text-anchor="middle">Rank-1 PCA → Lambda;</text>
+  <text x="692" y="199" class="d" text-anchor="middle">drop outlier cells</text>
+  <text x="692" y="218" class="d" text-anchor="middle">(MAD ≥ 10), refit</text>
+
+  <!-- A5 -->
+  <rect x="802" y="124" width="164" height="132" rx="8" fill="#d5f0e8" stroke="#009e73" stroke-width="1.5"/>
+  <text x="884" y="152" class="t" text-anchor="middle">A5 Test + record</text>
+  <text x="884" y="180" class="d" text-anchor="middle">Wilcoxon vs controls:</text>
+  <text x="884" y="199" class="d" text-anchor="middle">fix sign, pick, filter;</text>
+  <text x="884" y="218" class="d" text-anchor="middle">store dists (mean/SD)</text>
+
+  <!-- A arrows -->
+  <line x1="198" y1="190" x2="224" y2="190" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="390" y1="190" x2="416" y2="190" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="582" y1="190" x2="608" y2="190" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="774" y1="190" x2="800" y2="190" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <!-- ===================== Dictionary ===================== -->
+  <rect x="400" y="318" width="400" height="58" rx="8" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="600" y="342" class="t" text-anchor="middle">Dictionary (.rds)</text>
+  <text x="600" y="364" class="d" text-anchor="middle">Lambdas (features × knockouts) + dists (per-gene mean, SD)</text>
+  <path d="M884,256 L884,347 L802,347" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <!-- ===================== Phase B ===================== -->
+  <text x="34" y="424" class="ph" fill="#d55e00">Phase B: Fingerprint a query (R, ~100k cells)</text>
+
+  <!-- Dictionary feeds B2 and B3 -->
+  <line x1="500" y1="376" x2="500" y2="456" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <text x="508" y="420" class="lab">Lambdas</text>
+  <line x1="692" y1="376" x2="692" y2="456" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <text x="700" y="420" class="lab">dists</text>
+
+  <!-- Query input -->
+  <rect x="34" y="458" width="164" height="132" rx="8" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="116" y="486" class="t" text-anchor="middle">Query cells</text>
+  <text x="116" y="514" class="d" text-anchor="middle">e.g. disease vs</text>
+  <text x="116" y="533" class="d" text-anchor="middle">control cells,</text>
+  <text x="116" y="552" class="d" text-anchor="middle">SCTransformed</text>
+
+  <!-- B1 -->
+  <rect x="226" y="458" width="164" height="132" rx="8" fill="#fbe3d3" stroke="#d55e00" stroke-width="1.5"/>
+  <text x="308" y="486" class="t" text-anchor="middle">B1 Remove baseline</text>
+  <text x="308" y="514" class="d" text-anchor="middle">Control PCA on the</text>
+  <text x="308" y="533" class="d" text-anchor="middle">query; subtract it</text>
+  <text x="308" y="552" class="d" text-anchor="middle">→ residuals</text>
+
+  <!-- B2 -->
+  <rect x="418" y="458" width="164" height="132" rx="8" fill="#fbe3d3" stroke="#d55e00" stroke-width="1.5"/>
+  <text x="500" y="486" class="t" text-anchor="middle">B2 SuSiE regression</text>
+  <text x="500" y="514" class="d" text-anchor="middle">Residual ~ top 100</text>
+  <text x="500" y="533" class="d" text-anchor="middle">correlated Lambdas</text>
+  <text x="500" y="552" class="d" text-anchor="middle">→ credible sets</text>
+
+  <!-- B3 -->
+  <rect x="610" y="458" width="164" height="132" rx="8" fill="#fbe3d3" stroke="#d55e00" stroke-width="1.5"/>
+  <text x="692" y="486" class="t" text-anchor="middle">B3 Calibrate</text>
+  <text x="692" y="514" class="d" text-anchor="middle">Resample Lambdas</text>
+  <text x="692" y="533" class="d" text-anchor="middle">from dists (50×),</text>
+  <text x="692" y="552" class="d" text-anchor="middle">recompute PIPs</text>
+
+  <!-- Output -->
+  <rect x="802" y="458" width="164" height="132" rx="8" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="884" y="486" class="t" text-anchor="middle">Matches</text>
+  <text x="884" y="514" class="d" text-anchor="middle">Which knockouts</text>
+  <text x="884" y="533" class="d" text-anchor="middle">explain each cell</text>
+  <text x="884" y="552" class="d" text-anchor="middle">or group</text>
+
+  <!-- B arrows -->
+  <line x1="198" y1="524" x2="224" y2="524" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="390" y1="524" x2="416" y2="524" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="582" y1="524" x2="608" y2="524" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="774" y1="524" x2="800" y2="524" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <text x="505" y="630" class="sub" text-anchor="middle">Details: fit_schematic.md (Phase A), why_brisc_full_atlas.md (why every cell matters)</text>
+</svg>

@@ -54,10 +54,8 @@ def choose_features(
 
     if method == "expression":
         X = sc.X
-        n = X.shape[0]
-        mean = np.asarray(X.sum(axis=0)).ravel() / n
-        var_names = list(sc.var_names)
-        return [var_names[i] for i in np.where(mean > mean_expression)[0]]
+        gene_sums = np.asarray(X.sum(axis=0, dtype=np.float64)).ravel()
+        return features_by_mean_expression(gene_sums, X.shape[0], list(sc.var_names), mean_expression)
 
     # method == 'de'
     if perturbation_column is None or control_class is None:
@@ -99,6 +97,15 @@ def choose_features(
             seen.add(f)
             out.append(f)
     return out
+
+
+def features_by_mean_expression(gene_sums, n_cells: int, var_names, mean_expression: float = 0.01):
+    """Genes whose mean RAW count (``gene_sums / n_cells``) exceeds ``mean_expression``, in var order.
+
+    Split out so the per-file loader (which only has summed column totals) shares the same rule.
+    """
+    mean = np.asarray(gene_sums, dtype=np.float64) / n_cells
+    return [var_names[i] for i in np.flatnonzero(mean > mean_expression)]
 
 
 def _pick(columns, candidates, required=True):

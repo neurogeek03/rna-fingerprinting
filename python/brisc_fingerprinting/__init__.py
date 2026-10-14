@@ -8,10 +8,14 @@ byte-compatible with the existing R ``classify()``/``FingerprintCells()`` downst
 See ``BRISC_PORT_PLAN.md`` and ``CLAUDE.md`` for the algorithm spec and compatibility contract.
 """
 
-from .scaling import load_and_normalize, load_qc, normalize_counts, build_feature_matrix, gene_mean_sd
+from .scaling import (
+    load_and_normalize, load_qc, normalize_counts, restrict_to_features, build_feature_matrix, gene_mean_sd,
+)
+from .logs import log, rss_gb
 from .fit import fit
-from .learn_dictionary import learn_dictionary
-from .choose_features import choose_features
+from .learn_dictionary import learn_dictionary, learn_dictionary_from_matrix
+from .stacked import RowStackedCSR, load_qc_blocks, normalize_log1ppf, restrict_blocks
+from .choose_features import choose_features, features_by_mean_expression
 from .perturbations import collapse_to_single_gene
 from .rds_io import write_dictionary_rds
 
@@ -19,11 +23,20 @@ __all__ = [
     "load_and_normalize",
     "load_qc",
     "normalize_counts",
+    "restrict_to_features",
     "build_feature_matrix",
     "gene_mean_sd",
+    "log",
+    "rss_gb",
     "fit",
     "learn_dictionary",
+    "learn_dictionary_from_matrix",
+    "RowStackedCSR",
+    "load_qc_blocks",
+    "normalize_log1ppf",
+    "restrict_blocks",
     "choose_features",
+    "features_by_mean_expression",
     "collapse_to_single_gene",
     "write_dictionary_rds",
 ]

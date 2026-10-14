@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="1510" viewBox="0 0 1100 1510" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+  <title>fit() schematic: learning perturbation fingerprints (python/brisc_fingerprinting/fit.py)</title>
+  <style>
+    .h1 { font-size: 20px; font-weight: bold; fill: #111827; }
+    .sub { font-size: 12px; fill: #4b5563; }
+    .lg { font-size: 12px; fill: #1f2937; }
+    .sec { font-size: 13.5px; font-weight: bold; }
+    .t { font-size: 12.5px; font-weight: bold; fill: #111827; }
+    .d { font-size: 11.5px; fill: #1f2937; }
+    .r { font-size: 10.5px; font-family: DejaVu Sans Mono, Menlo, Consolas, monospace; fill: #6b7280; }
+    .pill { font-size: 11px; fill: #1e3a8a; }
+    .lbl { font-size: 11px; font-style: italic; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#374151"/></marker>
+    <marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker>
+    <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker>
+    <marker id="aho" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ea580c"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="1100" height="1510" fill="#ffffff"/>
+
+  <!-- Header -->
+  <text x="30" y="34" class="h1">fit(): how perturbation fingerprints are learned</text>
+  <text x="30" y="56" class="sub">python/brisc_fingerprinting/fit.py (port of R/fit.R).  n_ctrl = control cells, n_p = cells of perturbation p, k = features, P = kept perturbations</text>
+
+  <!-- Legend -->
+  <rect x="30" y="72" width="14" height="14" rx="2" fill="#f3f4f6" stroke="#6b7280"/>
+  <text x="50" y="84" class="lg">Inputs</text>
+  <rect x="120" y="72" width="14" height="14" rx="2" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="140" y="84" class="lg">Control baseline (once)</text>
+  <rect x="320" y="72" width="14" height="14" rx="2" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="340" y="84" class="lg">Per-perturbation (parallel)</text>
+  <rect x="540" y="72" width="14" height="14" rx="2" fill="#ffedd5" stroke="#ea580c"/>
+  <text x="560" y="84" class="lg">Quality filter</text>
+  <rect x="680" y="72" width="14" height="14" rx="2" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="700" y="84" class="lg">Output</text>
+  <rect x="780" y="72" width="28" height="14" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-dasharray="3,2"/>
+  <text x="815" y="84" class="lg">Shared from control baseline</text>
+
+  <!-- ============ INPUTS ============ -->
+  <text x="30" y="112" class="sec" fill="#374151">INPUTS (built in learn_dictionary.py:108–109)</text>
+
+  <rect x="30" y="122" width="330" height="72" rx="6" fill="#f3f4f6" stroke="#6b7280"/>
+  <text x="44" y="142" class="t">Xf: sparse CSR, cells × k</text>
+  <text x="44" y="160" class="d">log1pPF-normalized counts, feature columns only</text>
+  <text x="44" y="180" class="r">build_feature_matrix · scaling.py:96</text>
+
+  <rect x="385" y="122" width="330" height="72" rx="6" fill="#f3f4f6" stroke="#6b7280"/>
+  <text x="399" y="142" class="t">gene_mean, gene_sd: length k, float32</text>
+  <text x="399" y="160" class="d">global per-gene mean and sample sd (sd 0 → 1)</text>
+  <text x="399" y="180" class="r">gene_mean_sd · scaling.py:119</text>
+
+  <rect x="740" y="122" width="330" height="72" rx="6" fill="#f3f4f6" stroke="#6b7280"/>
+  <text x="754" y="142" class="t">perturbation: one label per cell</text>
+  <text x="754" y="160" class="d">all control guides pooled as 'control'</text>
+  <text x="754" y="180" class="r">collapse_to_single_gene · learn_dictionary.py:82</text>
+
+  <line x1="195" y1="194" x2="195" y2="224" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="550" y1="194" x2="550" y2="224" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="905" y1="194" x2="905" y2="224" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <!-- ============ 1 CONTROL BASELINE ============ -->
+  <rect x="20" y="225" width="1060" height="190" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="38" y="247" class="sec" fill="#1e3a8a">1  CONTROL BASELINE (once, on all n_ctrl control cells)</text>
+  <text x="1062" y="247" class="r" text-anchor="end">fit.py:215–238</text>
+
+  <rect x="38" y="260" width="242" height="100" rx="6" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="48" y="280" class="t">1a  Densify + z-score</text>
+  <text x="48" y="298" class="d">_scaled_block(Xf, ctrl_idx)</text>
+  <text x="48" y="314" class="d">(X − gene_mean) / gene_sd, float32</text>
+  <text x="48" y="330" class="d">→ ctrl_centered: n_ctrl × k</text>
+  <text x="48" y="348" class="r">fit.py:223, 33–38</text>
+
+  <rect x="302" y="260" width="242" height="100" rx="6" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="312" y="280" class="t">1b  Center in place</text>
+  <text x="312" y="298" class="d">ctrl_mus = column means → k</text>
+  <text x="312" y="314" class="d">(float64 accumulate, stored float32)</text>
+  <text x="312" y="330" class="d">ctrl_centered −= ctrl_mus (no copy)</text>
+  <text x="312" y="348" class="r">fit.py:224–225</text>
+
+  <rect x="566" y="260" width="242" height="100" rx="6" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="576" y="280" class="t">1c  PCA, 30 PCs</text>
+  <text x="576" y="298" class="d">randomized_svd(ctrl_centered, 30)</text>
+  <text x="576" y="314" class="d">rotation = Vt.T → k × 30</text>
+  <text x="576" y="330" class="d">ctrl_scores = U·S → n_ctrl × 30</text>
+  <text x="576" y="348" class="r">fit.py:226–229</text>
+
+  <rect x="830" y="260" width="242" height="100" rx="6" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="840" y="280" class="t">1d  Control residual reference</text>
+  <text x="840" y="298" class="d">samp = 1,000 random controls (seed)</text>
+  <text x="840" y="314" class="d">(centered − scores @ R.T)[samp]</text>
+  <text x="840" y="330" class="d">→ ctrl_res_fx: k × 1000</text>
+  <text x="840" y="348" class="r">fit.py:232–237</text>
+
+  <line x1="280" y1="310" x2="301" y2="310" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ahb)"/>
+  <line x1="544" y1="310" x2="565" y2="310" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ahb)"/>
+  <line x1="808" y1="310" x2="829" y2="310" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ahb)"/>
+
+  <rect x="38" y="372" width="1034" height="30" rx="15" fill="#ffffff" stroke="#2563eb" stroke-dasharray="4,3"/>
+  <text x="555" y="392" class="pill" text-anchor="middle">Shared read-only with every worker:  rotation (k × 30)  ·  ctrl_mus (k)  ·  ctrl_res_fx (k × 1000)     (R = rotation; dense control block freed, fit.py:238)</text>
+
+  <line x1="380" y1="415" x2="380" y2="434" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <!-- Selection -->
+  <rect x="60" y="435" width="640" height="46" rx="6" fill="#ffffff" stroke="#6b7280"/>
+  <text x="75" y="455" class="t">Select perturbations: label ≠ 'control' and ≥ min_cells cells (default 10)</text>
+  <text x="75" y="472" class="d">the rest are reported as "Too few cells"; row indices idx_p precomputed</text>
+  <text x="688" y="472" class="r" text-anchor="end">fit.py:241–252</text>
+
+  <line x1="380" y1="481" x2="380" y2="504" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <!-- ============ 2 PER-PERTURBATION ============ -->
+  <rect x="20" y="505" width="1060" height="813" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="38" y="528" class="sec" fill="#14532d">2  PER-PERTURBATION: _fit_one(p) for each selected p</text>
+  <text x="1062" y="528" class="r" text-anchor="end">fit.py:81–165, 257–263</text>
+  <text x="38" y="546" class="d">joblib Parallel(n_jobs, backend='threading'): threads share the read-only Xf; numpy/scipy release the GIL</text>
+
+  <!-- 2a -->
+  <rect x="60" y="560" width="640" height="50" rx="6" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="75" y="580" class="t">2a  Densify + z-score this perturbation's cells</text>
+  <text x="688" y="580" class="r" text-anchor="end">fit.py:97</text>
+  <text x="75" y="598" class="d">scaled = _scaled_block(Xf, idx_p)  →  n_p × k, float32   (== t(pdev) in R)</text>
+
+  <!-- 2b -->
+  <rect x="60" y="630" width="640" height="64" rx="6" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="75" y="650" class="t">2b  Project onto the control PCs and reconstruct</text>
+  <text x="688" y="650" class="r" text-anchor="end">fit.py:99–101</text>
+  <text x="75" y="668" class="d">centered = scaled − ctrl_mus;   scores = centered @ rotation  →  n_p × 30</text>
+  <text x="75" y="684" class="d">reconstruct = scores @ rotation.T + ctrl_mus  →  n_p × k</text>
+
+  <!-- 2c -->
+  <rect x="60" y="714" width="640" height="50" rx="6" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="75" y="734" class="t">2c  Baseline-subtracted residual</text>
+  <text x="688" y="734" class="r" text-anchor="end">fit.py:102–103</text>
+  <text x="75" y="752" class="d">residual = scaled − reconstruct  →  n_p × k;     residual_fx = residual.T  →  k × n_p</text>
+
+  <!-- 2d -->
+  <rect x="60" y="784" width="640" height="64" rx="6" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="75" y="804" class="t">2d  Per-feature Wilcoxon: control vs perturbed residuals</text>
+  <text x="688" y="804" class="r" text-anchor="end">fit.py:106, 53–78</text>
+  <text x="75" y="822" class="d">rank [ctrl_res_fx | residual_fx] per feature (1000 + n_p cells), normal approximation</text>
+  <text x="75" y="838" class="d">→ U (control-group statistic) and two-sided p, each length k; computed once per p</text>
+
+  <!-- 2e -->
+  <rect x="60" y="868" width="640" height="50" rx="6" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="75" y="888" class="t">2e  Rank-1 SVD of the residual (no centering)</text>
+  <text x="688" y="888" class="r" text-anchor="end">fit.py:109, 41–50</text>
+  <text x="75" y="906" class="d">randomized_svd(residual, 1)  →  Lam = Vt[0] (k loadings),  ell = U·S (n_p cell scores)</text>
+
+  <!-- 2f -->
+  <rect x="60" y="938" width="640" height="80" rx="6" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="75" y="958" class="t">2f  MAD outlier loop</text>
+  <text x="688" y="958" class="r" text-anchor="end">fit.py:110–132</text>
+  <text x="75" y="976" class="d">mads = (ell − median(ell)) / MAD(ell)    (MAD constant = 1)</text>
+  <text x="75" y="992" class="d">while max |mads| ≥ 10: drop those cells, refit rank-1 on the rest (stop if &lt; min_cells left)</text>
+  <text x="75" y="1008" class="d">each fit: append cor(Lam, U) to track_cors; store (Lam, ell, kept cells)</text>
+  <path d="M700,962 H738 V998 H703" fill="none" stroke="#16a34a" stroke-width="1.5" marker-end="url(#ahg)"/>
+  <text x="748" y="976" class="lbl" fill="#14532d">max |mads| ≥ 10:</text>
+  <text x="748" y="992" class="lbl" fill="#14532d">drop outlier cells, refit</text>
+
+  <!-- 2g -->
+  <rect x="60" y="1038" width="640" height="64" rx="6" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="75" y="1058" class="t">2g  Pick the best iteration and fix the sign</text>
+  <text x="688" y="1058" class="r" text-anchor="end">fit.py:135–142</text>
+  <text x="75" y="1076" class="d">pick = argmax |track_cors|  →  Lam, ell, kept cells;   residual_fx_pick = residual_fx[:, kept]</text>
+  <text x="75" y="1092" class="d">if track_cors[pick] &gt; 0:  Lam, ell = −Lam, −ell    (Lambda anti-correlated with U)</text>
+
+  <!-- 2h FILTER -->
+  <rect x="60" y="1122" width="640" height="80" rx="6" fill="#ffedd5" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="75" y="1142" class="t">2h  Quality filter</text>
+  <text x="688" y="1142" class="r" text-anchor="end">fit.py:145–152</text>
+  <text x="75" y="1160" class="d">(i)  ranksums(ell, Lam @ ctrl_res_fx).pvalue &lt; 0.05</text>
+  <text x="75" y="1176" class="d">(ii) ≥ 2 of the top-10 |Lam| features have Wilcoxon p &lt; 0.05 (p from 2d)</text>
+  <text x="75" y="1192" class="d">keep if (i) AND (ii), or always if override_filter=True</text>
+
+  <line x1="700" y1="1157" x2="759" y2="1157" stroke="#ea580c" stroke-width="1.5" marker-end="url(#aho)"/>
+  <text x="716" y="1150" class="lbl" fill="#7c2d12">fail</text>
+  <rect x="760" y="1132" width="300" height="50" rx="6" fill="#ffffff" stroke="#ea580c" stroke-dasharray="5,3"/>
+  <text x="772" y="1152" class="t" fill="#7c2d12">drop p: return None</text>
+  <text x="772" y="1170" class="d">also if the worker raises (fit.py:163–165)</text>
+
+  <!-- 2i -->
+  <rect x="60" y="1222" width="640" height="80" rx="6" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="75" y="1242" class="t">2i  Estimate dists (used by classify() calibration)</text>
+  <text x="688" y="1242" class="r" text-anchor="end">fit.py:155–162</text>
+  <text x="75" y="1260" class="d">means = residual_fx_pick @ ell / Σ ell²  →  k</text>
+  <text x="75" y="1276" class="d">σ² = Σ_cells (residual_fx_pick − means ⊗ ell)² / (n_kept − 1);    sds = √(σ² / Σ ell²)  →  k</text>
+  <text x="75" y="1292" class="d">return (p, Lam [k], dists_p = [means | sds] [k × 2])</text>
+
+  <!-- spine arrows inside panel 2 -->
+  <line x1="380" y1="610" x2="380" y2="629" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="380" y1="694" x2="380" y2="713" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="380" y1="764" x2="380" y2="783" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="380" y1="848" x2="380" y2="867" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="380" y1="918" x2="380" y2="937" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="380" y1="1018" x2="380" y2="1037" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="380" y1="1102" x2="380" y2="1121" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="380" y1="1202" x2="380" y2="1221" stroke="#16a34a" stroke-width="1.5" marker-end="url(#ahg)"/>
+  <text x="390" y="1216" class="lbl" fill="#14532d">keep</text>
+
+  <!-- shared-input pills -->
+  <rect x="760" y="572" width="300" height="26" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-dasharray="3,2"/>
+  <text x="772" y="589" class="pill">inputs: Xf rows idx_p, gene_mean, gene_sd</text>
+  <line x1="760" y1="585" x2="701" y2="585" stroke="#2563eb" stroke-width="1.2" marker-end="url(#ahb)"/>
+
+  <rect x="760" y="649" width="300" height="26" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-dasharray="3,2"/>
+  <text x="772" y="666" class="pill">from 1b/1c: ctrl_mus (k), rotation (k × 30)</text>
+  <line x1="760" y1="662" x2="701" y2="662" stroke="#2563eb" stroke-width="1.2" marker-end="url(#ahb)"/>
+
+  <rect x="760" y="803" width="300" height="26" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-dasharray="3,2"/>
+  <text x="772" y="820" class="pill">from 1d: ctrl_res_fx (k × 1000)</text>
+  <line x1="760" y1="816" x2="701" y2="816" stroke="#2563eb" stroke-width="1.2" marker-end="url(#ahb)"/>
+
+  <rect x="760" y="1090" width="300" height="26" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-dasharray="3,2"/>
+  <text x="772" y="1107" class="pill">from 1d: ctrl_res_fx, for test (i)</text>
+  <path d="M760,1103 H730 V1135 H701" fill="none" stroke="#2563eb" stroke-width="1.2" marker-end="url(#ahb)"/>
+
+  <!-- to output -->
+  <line x1="380" y1="1302" x2="380" y2="1337" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <text x="390" y="1332" class="lbl" fill="#374151">results from all workers</text>
+
+  <!-- ============ 3 OUTPUT ============ -->
+  <rect x="20" y="1338" width="1060" height="140" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="38" y="1360" class="sec" fill="#4c1d95">3  OUTPUT (kept perturbations only)</text>
+  <text x="1062" y="1360" class="r" text-anchor="end">fit.py:266–282</text>
+
+  <rect x="38" y="1372" width="334" height="88" rx="6" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="50" y="1392" class="t">3a  Clean names</text>
+  <text x="50" y="1410" class="d">re.sub('[,;_]', '-', name)</text>
+  <text x="50" y="1426" class="d">then _make_unique: repeats → x.1, x.2, …</text>
+  <text x="50" y="1448" class="r">fit.py:266–270, 285–296</text>
+
+  <rect x="388" y="1372" width="334" height="88" rx="6" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="400" y="1392" class="t">3b  Stack</text>
+  <text x="400" y="1410" class="d">Lambdas = column_stack(Lam_p)  →  k × P</text>
+  <text x="400" y="1426" class="d">dists = P matrices, each k × 2 (means, sds)</text>
+  <text x="400" y="1448" class="r">fit.py:277–282</text>
+
+  <rect x="738" y="1372" width="334" height="88" rx="6" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="750" y="1392" class="t">3c  Write .rds for R</text>
+  <text x="750" y="1410" class="d">write_dictionary_rds → class 'dictionary'</text>
+  <text x="750" y="1426" class="d">consumed by R classify() / FingerprintCells()</text>
+  <text x="750" y="1448" class="r">rds_io.py:26</text>
+
+  <line x1="372" y1="1416" x2="387" y2="1416" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="722" y1="1416" x2="737" y2="1416" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <text x="30" y="1500" class="sub">fit() returns None if no perturbation has ≥ min_cells cells (fit.py:245–247) or none survives the filter (fit.py:273–275).</text>
+</svg>

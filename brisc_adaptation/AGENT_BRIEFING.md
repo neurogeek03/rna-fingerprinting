@@ -2,6 +2,8 @@
 
 Read this first if you're a new agent or setting up on a new cluster. It is the portable summary of
 the work (the authoritative detail is in `decisions_log.md`; deferred ideas in `future_todos.md`).
+For the method in plain terms, see `docs/pipeline_overview.md`; for why the full atlas matters,
+`docs/why_brisc_full_atlas.md`; for `fit()` step by step, `docs/fit_schematic.md`.
 
 ## Goal
 

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="330" viewBox="0 0 900 330" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>How a perturbation fingerprint is learned (at a glance)</title>
+  <style>
+    .h1 { font-size: 20px; font-weight: bold; fill: #111827; }
+    .sub { font-size: 13px; fill: #4b5563; }
+    .t { font-size: 15px; font-weight: bold; fill: #111827; }
+    .d { font-size: 13px; fill: #374151; }
+    .grp { font-size: 13px; font-style: italic; fill: #00785a; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#374151"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="900" height="330" fill="#ffffff"/>
+
+  <!-- Header -->
+  <text x="450" y="38" class="h1" text-anchor="middle">How a perturbation fingerprint is learned</text>
+  <text x="450" y="62" class="sub" text-anchor="middle">Whole-brain Perturb-seq cells in, a fingerprint dictionary out</text>
+
+  <!-- Dashed group around steps 2-4 -->
+  <rect x="183" y="90" width="534" height="176" rx="12" fill="none" stroke="#009e73" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="450" y="292" class="grp" text-anchor="middle">Repeated for each perturbation, in parallel</text>
+
+  <!-- 1. Control baseline -->
+  <rect x="18" y="110" width="156" height="136" rx="8" fill="#dcebf7" stroke="#0072b2" stroke-width="1.5"/>
+  <text x="96" y="146" class="t" text-anchor="middle">Control cells</text>
+  <text x="96" y="174" class="d" text-anchor="middle">Learn the normal</text>
+  <text x="96" y="193" class="d" text-anchor="middle">baseline</text>
+  <text x="96" y="212" class="d" text-anchor="middle">(PCA, 30 PCs)</text>
+
+  <!-- 2. Remove baseline -->
+  <rect x="195" y="110" width="156" height="136" rx="8" fill="#d5f0e8" stroke="#009e73" stroke-width="1.5"/>
+  <text x="273" y="146" class="t" text-anchor="middle">Remove baseline</text>
+  <text x="273" y="174" class="d" text-anchor="middle">Subtract it from the</text>
+  <text x="273" y="193" class="d" text-anchor="middle">perturbed cells:</text>
+  <text x="273" y="212" class="d" text-anchor="middle">what is left = residual</text>
+
+  <!-- 3. Fingerprint -->
+  <rect x="372" y="110" width="156" height="136" rx="8" fill="#d5f0e8" stroke="#009e73" stroke-width="1.5"/>
+  <text x="450" y="146" class="t" text-anchor="middle">Find fingerprint</text>
+  <text x="450" y="174" class="d" text-anchor="middle">Main axis of the</text>
+  <text x="450" y="193" class="d" text-anchor="middle">residual (Lambda),</text>
+  <text x="450" y="212" class="d" text-anchor="middle">outlier cells removed</text>
+
+  <!-- 4. Quality check -->
+  <rect x="549" y="110" width="156" height="136" rx="8" fill="#fcebcc" stroke="#e69f00" stroke-width="1.5"/>
+  <text x="627" y="146" class="t" text-anchor="middle">Quality check</text>
+  <text x="627" y="174" class="d" text-anchor="middle">Keep only if it</text>
+  <text x="627" y="193" class="d" text-anchor="middle">differs from controls</text>
+  <text x="627" y="212" class="d" text-anchor="middle">(Wilcoxon test)</text>
+
+  <!-- 5. Dictionary -->
+  <rect x="726" y="110" width="156" height="136" rx="8" fill="#f5e1ec" stroke="#cc79a7" stroke-width="1.5"/>
+  <text x="804" y="146" class="t" text-anchor="middle">Dictionary</text>
+  <text x="804" y="174" class="d" text-anchor="middle">Fingerprint + its</text>
+  <text x="804" y="193" class="d" text-anchor="middle">uncertainty, saved</text>
+  <text x="804" y="212" class="d" text-anchor="middle">for R classify()</text>
+
+  <!-- Arrows -->
+  <line x1="174" y1="178" x2="193" y2="178" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="351" y1="178" x2="370" y2="178" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="528" y1="178" x2="547" y2="178" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="705" y1="178" x2="724" y2="178" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>
+</svg>
