@@ -1,0 +1,41 @@
+# --- Large data / matrices ---
+*.h5ad
+*.h5
+*.hdf5
+*.loom
+*.mtx
+*.mtx.gz
+*.npy
+*.npz
+*.parquet
+*.feather
+*.zarr/
+
+# --- R serialized objects (package data in data/ and Meta/ stays tracked) ---
+*.rds
+*.RData
+*.Rdata
+!Meta/*.rds
+
+# --- Containers ---
+*.sif
+*.simg
+*.tar
+*.tar.gz
+
+# --- Pipeline outputs / logs ---
+brisc_adaptation/validation/out/
+**/out/
+**/logs/
+*.out
+*.err
+slurm-*.out
+
+# --- Python ---
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# --- R session ---
+.Rhistory
+.Rproj.user/
