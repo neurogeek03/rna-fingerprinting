@@ -8,6 +8,14 @@ expression-selected features, and 170 of 1,736 eligible perturbations kept. That
 the 6.1M QC cells. Scaling up gives **about 2,000 cells per perturbation on the full atlas**, versus
 **about 150** for a downsample R could handle (about 500k cells).
 
+> **Update (same day): dictionaries are now learned per subclass**, as the authors do per cell type
+> (`../decisions_log.md` §9). The tables below quote cells per perturbation across the whole atlas.
+> Per subclass, n_p is the cells of one knockout *within one subclass*, which is much smaller. Most
+> knockout × subclass pairs therefore sit in the lower rows of each table (tens to a few hundred
+> cells), and a 10x downsample would push many of them below `min_cells = 10`. The per-subclass split
+> makes the full atlas more necessary, not less. Measure the real per-subclass counts from
+> `summary.tsv` after the smoke test.
+
 ## Statistical consequences
 
 | Dimension | Downsample (~500k, R) | Full atlas (6.1M, BRISC) | Scaling argument |
@@ -17,7 +25,7 @@ the 6.1M QC cells. Scaling up gives **about 2,000 cells per perturbation on the 
 | Rank-1 PCA stability (12k features) | Detection threshold √(features/cells) ≈ 9 | Threshold ≈ 2.5 | Spiked-covariance (BBP) threshold |
 | MAD ≥ 10 outlier removal | MAD relative error ~10% (26% at 20 cells). Removals push perturbations toward `min_cells=10`. | ~3% | ~1.17/√n |
 | `dists` means/SDs (classify() calibration) | Standard error ~0.08σ | Standard error ~0.02σ | 1/√n |
-| Control baseline (30-PC PCA) | ~150k controls. Rare subclasses have only tens of cells. | ~2.2M controls. Every subclass and region is represented. | Smallest gain of all the steps (see below) |
+| Control baseline (30-PC PCA, per subclass) | Rare subclasses fall below 30 controls and get no dictionary | ~10x more subclasses clear the 30-control bar | Linear in n |
 | Cell-type/region coverage | Perturbations in rare types fall below `min_cells` | Full coverage | — |
 | Reproducibility | Results depend on which subset was sampled (seed, stratification) | Deterministic over all cells. No sampling choices to justify. | — |
 
@@ -66,21 +74,17 @@ needs an R-parity decision because R hard-codes 1,000.
 
 ### Control baseline PCA (fit.R:19-29)
 
-**Why it exists.** Most variation among cells is cell type, region and state, not perturbation. If
-this variation were not removed, every perturbation's rank-1 PCA would just find "excitatory vs
-inhibitory neuron". The 30 control PCs model this baseline, and subtracting them leaves only what
-the perturbation adds.
+**Why it exists.** Even within one subclass, cells vary by region and state, and that variation is
+not caused by the perturbation. If it were not removed, a perturbation's rank-1 PCA could just find
+"anterior vs posterior" or "active vs resting". The 30 control PCs model this baseline, and
+subtracting them leaves only what the perturbation adds. Splitting by subclass removes cell-type
+identity from the baseline problem altogether. A single pooled baseline could not do this: 30 PCs
+for about 300 subclasses.
 
-**How n enters.** This step gains the least from more cells. With 150k controls, k/n_ctrl is already
-below 0.1, so the top PCs are estimated well either way. The real gains are smaller:
-
-- `ctrl.mus` and the PC directions represent the true cell-type mix of the atlas, not one sample of it.
-- Subclasses with only tens of controls in a subsample hardly affect the PCs. Perturbed cells of
-  those types then keep their cell-type signal in the residual, where it can be mistaken for
-  perturbation signal.
-
-The binding limit here is the number of PCs (30 for about 300 subclasses), not the number of cells.
-See the "one pooled baseline" downside below.
+**How n enters.** Each subclass now has its own control PCA, on that subclass's controls only. The
+PCs are noisy when n_ctrl is small compared with k = 12k features, and the preprint's floor is
+30 controls. A 10x downsample takes a subclass with 300 controls down to 30. So on the full atlas
+many more subclasses get a dictionary at all, and the ones that do get a better-estimated baseline.
 
 ### Rank-1 PCA → Lambda (fit.R:55, 74)
 
@@ -143,9 +147,11 @@ uncertainty, but that uncertainty comes from too few cells, not from the biology
 
 ## Downsides of the full-data approach
 
-- **One pooled baseline.** 30 PCs fitted across ~300 subclasses can't capture all within-type
-  structure. A perturbation whose cells are enriched in one subclass can partly encode cell-type
-  composition in its Lambda. Per-subclass runs would give cleaner baselines, but each would have less power.
+- **Per-subclass power.** Per-subclass dictionaries (matching the authors) remove the pooled-baseline
+  confound, but split the cells. Small subclasses and rarely-hit knockouts will still fall below
+  `min_cells` or the 30-control floor, even on the full atlas.
+- **Shared features and log1pPF target.** These are global across subclasses (z-score stats are per
+  subclass). R would SCTransform each subset separately.
 - **The filter does not tighten as n grows.** At ~2,000 cells, p<0.05 is easy to pass, so weak or
   confounded signals can get through: DNA-damage response, transduction bias in the `Negative`
   (no-guide) controls. Consider an effect-size or FDR threshold. The Wilcoxon control reference
@@ -160,6 +166,7 @@ uncertainty, but that uncertainty comes from too few cells, not from the biology
 
 Cell count is the binding constraint. The biggest gain is rank-1 PCA: moderate perturbations cross
 the detection threshold and become usable fingerprints. Wilcoxon power, MAD robustness and `dists`
-precision all improve roughly with √n, and the baseline gains rare-subclass representation. Subsetting cuts n by about 10x. BRISC removes the dense-matrix memory wall, so every
-cell can be used. The costs are an approximate normalization and a single pooled baseline, and the
-filter thresholds should be re-tuned for the higher power.
+precision all improve roughly with √n. Per-subclass dictionaries divide the cells further, so each
+subclass needs every cell it has. Subsetting cuts n by about 10x. BRISC removes the dense-matrix
+memory wall, loads and normalizes once, and then learns each subclass's dictionary from all of its
+cells. The costs are an approximate normalization and filter thresholds that may need re-tuning.

@@ -13,7 +13,7 @@ from .scaling import (
 )
 from .logs import log, rss_gb
 from .fit import fit
-from .learn_dictionary import learn_dictionary, learn_dictionary_from_matrix
+from .learn_dictionary import iter_dictionaries_by_group, learn_dictionary, learn_dictionary_from_matrix
 from .stacked import RowStackedCSR, load_qc_blocks, normalize_log1ppf, restrict_blocks
 from .choose_features import choose_features, features_by_mean_expression
 from .perturbations import collapse_to_single_gene
@@ -31,6 +31,7 @@ __all__ = [
     "fit",
     "learn_dictionary",
     "learn_dictionary_from_matrix",
+    "iter_dictionaries_by_group",
     "RowStackedCSR",
     "load_qc_blocks",
     "normalize_log1ppf",

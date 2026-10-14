@@ -28,7 +28,7 @@ without downsampling. Everything downstream (`classify()`/`FingerprintCells()`, 
 
 `run_learn_dictionary.py` does it all in a single process:
 load h5ads (counts + obs + var only) → QC-filter → choose features → normalize (log1pPF) →
-collapse perturbation labels → `fit()` (control 30-PC PCA, per-perturbation baseline-subtract →
+collapse perturbation labels → **per `predicted_subclass`** (default; `decisions_log.md` §9) `fit()` (control 30-PC PCA, per-perturbation baseline-subtract →
 rank-1 PCA → Wilcoxon sign/filter → dist estimation) → write R-compatible `.rds` via `ryp`.
 
 Key design decisions already made (defaults in the code):

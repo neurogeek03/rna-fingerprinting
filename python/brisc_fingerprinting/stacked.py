@@ -80,11 +80,11 @@ def _to_int32_csr(X):
 
 
 def load_qc_blocks(paths, qc_column: str = "passes_qc", label_column: str = "gene_target",
-                   num_threads: int = -1):
+                   obs_columns=(), num_threads: int = -1):
     """Load each h5ad's QC-passing RAW counts as its own CSR block (no concatenation).
 
-    Only ``qc_column`` and ``label_column`` are read from obs (the files encode other columns with
-    inconsistent dtypes); labels are returned as plain strings.
+    Only ``qc_column``, ``label_column`` and ``obs_columns`` are read from obs (the files encode other
+    columns with inconsistent dtypes); labels and extra columns are returned as plain strings.
 
     Returns
     -------
@@ -93,15 +93,17 @@ def load_qc_blocks(paths, qc_column: str = "passes_qc", label_column: str = "gen
         cell, concatenated in file order), ``var_names`` (list[str]), ``lib_sizes`` (list of float64
         arrays: per-cell total counts over ALL genes, needed by :func:`normalize_log1ppf`), and
         ``gene_sums`` (float64 array: raw count sum per gene over all cells, for expression-based
-        feature selection).
+        feature selection), and ``obs`` (dict: each of ``obs_columns`` -> object array, one per cell).
     """
+    obs_columns = list(obs_columns)
     blocks, labels, lib_sizes = [], [], []
+    extra = {c: [] for c in obs_columns}
     var_names = None
     gene_sums = None
     for p in paths:
         log(f"[load_qc_blocks] loading {p}")
-        s = brisc.SingleCell(p, obs_columns=[qc_column, label_column], obsm=False, obsp=False,
-                             varm=False, varp=False, uns=False, num_threads=num_threads)
+        s = brisc.SingleCell(p, obs_columns=[qc_column, label_column, *obs_columns], obsm=False,
+                             obsp=False, varm=False, varp=False, uns=False, num_threads=num_threads)
         s = s.filter_obs(pl.col(qc_column))
         names = list(s.var_names)
         if var_names is None:
@@ -109,6 +111,8 @@ def load_qc_blocks(paths, qc_column: str = "passes_qc", label_column: str = "gen
         elif names != var_names:
             raise ValueError(f"{p}: var names differ from {paths[0]}; cannot stack files")
         labels.append(np.asarray(s.obs[label_column].cast(pl.String).to_list(), dtype=object))
+        for c in obs_columns:
+            extra[c].append(np.asarray(s.obs[c].cast(pl.String).to_list(), dtype=object))
         src = f"data={s.X.data.dtype} indices={s.X.indices.dtype} indptr={s.X.indptr.dtype}"
         block = _to_int32_csr(s.X)
         del s
@@ -125,6 +129,7 @@ def load_qc_blocks(paths, qc_column: str = "passes_qc", label_column: str = "gen
         "var_names": var_names,
         "lib_sizes": lib_sizes,
         "gene_sums": gene_sums,
+        "obs": {c: np.concatenate(v) for c, v in extra.items()},
     }
 
 

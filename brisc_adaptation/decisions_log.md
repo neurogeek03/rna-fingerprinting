@@ -118,6 +118,32 @@ Confirmed from the data (QC cells, one file): `Negative` = **cells with no guide
   perturbations with matching sign; **signed Pearson r = +0.866 (CPSF6), +0.864 (PABPN1)**, top-20 gene
   overlap 11–12/20. Gap attributed to z-score(log1pPF) vs SCTransform Pearson residuals; **accepted**.
 
+## 9. One dictionary per subclass (2026-10-14)
+
+**Decision.** Learn one dictionary per `predicted_subclass`, not one pooled dictionary.
+
+**Why.** The authors do this. Preprint Methods (Immune Dictionary): "We then estimated fingerprints
+separately for each cell type, using the PBS cells as controls, and excluding cell types with fewer than
+30 PBS cells available." Queries are then mapped "to the corresponding fingerprints of the same cell
+type". The package code never shows this, because `fit()`/`LearnDictionary()` have no cell-type notion:
+the split is done by subsetting the object before calling them, and the vignettes use one cell line.
+A pooled run blends cell-type-specific effects into one Lambda and leaves cell-type structure in the
+residuals (30 PCs cannot model ~300 subclasses).
+
+**How.** `iter_dictionaries_by_group` (`learn_dictionary.py`) loops over subclasses. Each subclass uses
+its own control cells (baseline PCA + 1,000-cell Wilcoxon reference) and its own per-gene mean/SD, and
+`fit()` is unchanged. Subclasses with < 30 controls are skipped (preprint threshold;
+`--min-control-cells`). Only one subclass's rows are copied out of the stacked matrix at a time. Output
+is one `<subclass>.rds` per subclass plus `summary.tsv`. CLI `--group-column predicted_subclass`
+(default in both run scripts; `GROUP_COLUMN=` restores the pooled run). Test: `python/tests/test_by_group.py`.
+
+**Kept global on purpose.** The feature set and log1pPF target are shared, so every subclass dictionary
+has the same rows. (R per-subset SCTransform would be per-subclass; revisit if needed.)
+
+**Cost.** Fewer cells per knockout per subclass, so more knockout × subclass pairs fall below
+`min_cells` and the Wilcoxon filter has less power. Check `summary.tsv` from a smoke test before the
+full run. Phase B must also be per subclass (in `/scratch/mfafouti/RNA-fingerprinting-satija`).
+
 ## Open / to-do
 
 - [x] §4 Wilcoxon speedup — applied (`fit.py`).
@@ -126,5 +152,8 @@ Confirmed from the data (QC cells, one file): `Negative` = **cells with no guide
 - [x] Re-run single-file validation with finalized logic at `n_jobs=32` — passes in 67 s, 241 fingerprints.
 - [x] Numerical agreement check vs the R dictionary (CPA example) — r ≈ 0.87, accepted.
 - [ ] Confirm `Safe_target_*` treatment is acceptable (currently: control, not perturbation).
+- [x] §9 per-subclass dictionaries — applied; synthetic test passes.
+- [ ] Smoke-test per-subclass on 1–2 files; inspect `summary.tsv` (controls, candidates, kept per subclass).
 - [ ] Full-atlas run across all 14 h5ads once single-file validation looks good.
+- [ ] Phase B per subclass in the consuming project (subset query by subclass, matching `.rds`).
 - Deferred (see `future_todos.md`): analytic Pearson residuals for tighter R agreement (~0.95+).

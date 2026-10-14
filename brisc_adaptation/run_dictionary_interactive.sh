@@ -10,7 +10,7 @@
 # (A single file / small subset needs far less memory.)
 #
 # Required env: SIF, H5AD_DIR. Optional: OUT, FEATURE_MODE (expression|de|file), MEAN_EXPRESSION,
-# NJOBS, OMP_NUM_THREADS, APPTAINER_MODULE. See brisc_adaptation/AGENT_BRIEFING.md.
+# GROUP_COLUMN (default predicted_subclass; empty = pooled), MIN_CONTROL_CELLS, NJOBS, OMP_NUM_THREADS, APPTAINER_MODULE. See brisc_adaptation/AGENT_BRIEFING.md.
 
 set -euo pipefail
 module load "${APPTAINER_MODULE:-apptainer}" >/dev/null 2>&1 || true
@@ -22,7 +22,17 @@ REPO="$(dirname "$SCRIPT_DIR")"
 # --- cluster-specific: override via env vars (see brisc_adaptation/AGENT_BRIEFING.md) ---
 SIF=${SIF:?set SIF to the BRISC .sif path (pull docker://marlenfafouti/brisc:bioc-v2-mkl-seurat-sklearn)}
 H5AD_DIR=${H5AD_DIR:?set H5AD_DIR to the Perturb-seq h5ad directory on this cluster}
-OUT=${OUT:-$REPO/brisc_adaptation/dictionary_wholebrain.rds}
+# One dictionary per subclass (as the authors do per cell type). GROUP_COLUMN= (empty) -> one pooled
+# dictionary, and OUT is then a .rds path instead of a directory.
+GROUP_COLUMN=${GROUP_COLUMN-predicted_subclass}
+MIN_CONTROL_CELLS=${MIN_CONTROL_CELLS:-30}
+if [ -n "$GROUP_COLUMN" ]; then
+  OUT=${OUT:-$REPO/brisc_adaptation/dictionaries_wholebrain_by_subclass}
+  GROUP_ARGS=(--group-column "$GROUP_COLUMN" --min-control-cells "$MIN_CONTROL_CELLS")
+else
+  OUT=${OUT:-$REPO/brisc_adaptation/dictionary_wholebrain.rds}
+  GROUP_ARGS=()
+fi
 
 # Feature selection: expression (raw-count mean threshold) | de (find_markers) | file
 FEATURE_MODE=${FEATURE_MODE:-expression}
@@ -52,6 +62,7 @@ echo "out=$OUT"
 time apptainer exec "$SIF" python -u "$REPO/python/scripts/run_learn_dictionary.py" \
     --h5ad-dir "$H5AD_DIR" \
     "${FEAT_ARGS[@]}" \
+    "${GROUP_ARGS[@]}" \
     --perturbation-column gene_target \
     --qc-column passes_qc \
     --n-jobs "$NJOBS" \

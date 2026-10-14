@@ -6,6 +6,13 @@ Run inside the BRISC container, on a compute node (see python/sbatch/learn_dicti
     apptainer exec "$SIF" python -u python/scripts/run_learn_dictionary.py \
         --h5ad-dir "$H5AD_DIR" --choose-features expression --out dictionary.rds --n-jobs 96
 
+Per-group dictionaries (the authors learn one dictionary per cell type)::
+
+    ... --group-column predicted_subclass --out dictionaries/
+
+  writes dictionaries/<group>.rds for every group with enough controls, plus dictionaries/summary.tsv.
+  Per-file loader only.
+
 Loaders:
   per-file (default) -- one CSR block per h5ad, never concatenated, single global log1pPF target.
                         Needed for the full atlas (concat would double peak memory). No DE selection.
@@ -17,6 +24,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import re
 import sys
 
 # Make the package importable whether or not it's installed.
@@ -26,6 +34,7 @@ from brisc_fingerprinting import (  # noqa: E402
     RowStackedCSR,
     choose_features,
     features_by_mean_expression,
+    iter_dictionaries_by_group,
     learn_dictionary,
     learn_dictionary_from_matrix,
     load_qc,
@@ -49,7 +58,12 @@ def parse_args(argv=None):
     feat.add_argument("--features-file", help="Text file, one feature (gene symbol) per line")
     feat.add_argument("--choose-features", choices=["de", "expression"], help="Select features automatically")
 
-    p.add_argument("--out", required=True, help="Output .rds path")
+    p.add_argument("--out", required=True,
+                   help="Output .rds path, or an output directory with --group-column")
+    p.add_argument("--group-column", default=None,
+                   help="obs column to split by (e.g. predicted_subclass): one dictionary per group")
+    p.add_argument("--min-control-cells", type=int, default=30,
+                   help="With --group-column: skip groups with fewer control cells")
     p.add_argument("--loader", choices=["per-file", "concat"], default="per-file",
                    help="per-file (default; memory-safe for the full atlas) or concat (BRISC concat_obs)")
     p.add_argument("--perturbation-column", default="gene_target")
@@ -79,6 +93,8 @@ def parse_args(argv=None):
             p.error("--loader per-file implements log1pPF only")
         if args.max_cells is not None:
             p.error("--max-cells is only supported with --loader concat")
+    elif args.group_column:
+        p.error("--group-column needs --loader per-file")
     return args
 
 
@@ -101,9 +117,13 @@ def fit_kwargs(args):
 
 
 def run_per_file(args, paths):
-    """Per-file loader: load blocks -> choose features -> restrict -> global log1pPF -> fit."""
+    """Per-file loader: load blocks -> choose features -> restrict -> global log1pPF -> fit.
+
+    Returns the dictionary, or with ``--group-column`` a generator of ``(group, stats, dictionary)``.
+    """
+    group_cols = [args.group_column] if args.group_column else []
     loaded = load_qc_blocks(paths, qc_column=args.qc_column, label_column=args.perturbation_column,
-                            num_threads=args.num_threads)
+                            obs_columns=group_cols, num_threads=args.num_threads)
     blocks, var_names = loaded["blocks"], loaded["var_names"]
     n_cells = sum(b.shape[0] for b in blocks)
     log(f"[run] loaded {n_cells} QC-passing cells x {len(var_names)} genes (raw) in {len(blocks)} blocks")
@@ -122,6 +142,11 @@ def run_per_file(args, paths):
     mean_l = normalize_log1ppf(blocks, loaded["lib_sizes"], num_threads=num_threads)
     log(f"[run] normalized (mean library size {mean_l:.1f})")
 
+    if args.group_column:
+        return iter_dictionaries_by_group(
+            RowStackedCSR(blocks), labels=loaded["labels"], groups=loaded["obs"][args.group_column],
+            features=kept, min_control_cells=args.min_control_cells, **fit_kwargs(args),
+        )
     return learn_dictionary_from_matrix(RowStackedCSR(blocks), labels=loaded["labels"], features=kept,
                                         **fit_kwargs(args))
 
@@ -173,6 +198,40 @@ def run_concat(args, paths):
     )
 
 
+def group_file_name(group, used):
+    """Filesystem-safe, unique ``<group>.rds`` name (subclass labels contain spaces and slashes)."""
+    stem = re.sub(r"[^A-Za-z0-9.-]+", "_", group).strip("_") or "group"
+    name, i = stem, 1
+    while name in used:
+        name, i = f"{stem}.{i}", i + 1
+    used.add(name)
+    return f"{name}.rds"
+
+
+def write_group_dictionaries(groups, out_dir):
+    """Write one .rds per group as it is learned, plus summary.tsv (one row per group, flushed as it
+    goes so a killed job still leaves a usable summary)."""
+    os.makedirs(out_dir, exist_ok=True)
+    cols = ["group", "file", "n_cells", "n_control", "n_candidates", "n_kept", "status"]
+    summary = os.path.join(out_dir, "summary.tsv")
+    used, n_groups, n_written = set(), 0, 0
+    with open(summary, "w") as fh:
+        fh.write("\t".join(cols) + "\n")
+        for group, stats, result in groups:
+            fname = ""
+            if result is not None:
+                fname = group_file_name(group, used)
+                write_dictionary_rds(result, os.path.join(out_dir, fname))
+                n_written += 1
+            row = {"group": group, "file": fname, **stats}
+            fh.write("\t".join(str(row[c]) for c in cols) + "\n")
+            fh.flush()
+            n_groups += 1
+    log(f"[run] wrote {n_written} of {n_groups} group dictionaries -> {out_dir} (see {summary})")
+    if n_written == 0:
+        sys.exit("[run] no fingerprints learned for any group")
+
+
 def main(argv=None):
     args = parse_args(argv)
 
@@ -185,6 +244,9 @@ def main(argv=None):
 
     log(f"[run] {len(paths)} h5ad file(s), loader={args.loader}")
     result = (run_per_file if args.loader == "per-file" else run_concat)(args, paths)
+    if args.group_column:
+        write_group_dictionaries(result, args.out)
+        return
     if result is None:
         sys.exit("[run] no fingerprints learned")
 
